@@ -62,10 +62,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Force
 $PaperRoot = Join-Path $env:USERPROFILE "Documents\helper-paper-vault\paper"
 python "$env:USERPROFILE\.codex\skills\helper-paper\scripts\init_paper_vault.py" --root $PaperRoot
 python "$env:USERPROFILE\.codex\skills\helper-paper\scripts\check_paper_vault.py" --root $PaperRoot
+[Environment]::SetEnvironmentVariable("HELPER_PAPER_VAULT_ROOT", $PaperRoot, "User")
 $env:HELPER_PAPER_VAULT_ROOT = $PaperRoot
 ```
 
-现在可以在 Codex 对话框里说：
+如果 Codex 已经打开，重启 Codex 或开启一个新会话，让用户级环境变量生效。然后在 Codex 对话框里说：
 
 ```text
 $helper-paper start my day
@@ -208,12 +209,15 @@ helper-paper.backup-YYYYMMDD-HHmmss
 $PaperRoot = Join-Path $env:USERPROFILE "Documents\helper-paper-vault\paper"
 python "$env:USERPROFILE\.codex\skills\helper-paper\scripts\init_paper_vault.py" --root $PaperRoot
 python "$env:USERPROFILE\.codex\skills\helper-paper\scripts\check_paper_vault.py" --root $PaperRoot
+[Environment]::SetEnvironmentVariable("HELPER_PAPER_VAULT_ROOT", $PaperRoot, "User")
+$env:HELPER_PAPER_VAULT_ROOT = $PaperRoot
 ```
 
 接入已有 vault：
 
 ```powershell
-$env:HELPER_PAPER_VAULT_ROOT = "<你的 Obsidian vault>\paper"
+[Environment]::SetEnvironmentVariable("HELPER_PAPER_VAULT_ROOT", "<你的 Obsidian vault>\paper", "User")
+$env:HELPER_PAPER_VAULT_ROOT = [Environment]::GetEnvironmentVariable("HELPER_PAPER_VAULT_ROOT", "User")
 python "$env:USERPROFILE\.codex\skills\helper-paper\scripts\check_paper_vault.py" --root $env:HELPER_PAPER_VAULT_ROOT
 ```
 
@@ -473,7 +477,8 @@ paper\000_开始这里.md
 推荐用环境变量指定实际 vault：
 
 ```powershell
-$env:HELPER_PAPER_VAULT_ROOT = "<你的 Obsidian vault>\paper"
+[Environment]::SetEnvironmentVariable("HELPER_PAPER_VAULT_ROOT", "<你的 Obsidian vault>\paper", "User")
+$env:HELPER_PAPER_VAULT_ROOT = [Environment]::GetEnvironmentVariable("HELPER_PAPER_VAULT_ROOT", "User")
 ```
 
 也可以复制 `helper-paper/config.example.json` 为 `helper-paper/config.local.json` 后修改本地路径。不要把 `config.local.json` 或 API key 提交到 GitHub。

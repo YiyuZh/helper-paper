@@ -1,0 +1,4 @@
+interface:
+  display_name: "Helper Paper"
+  short_description: "每日论文阅读候选筛选精读含金量判断与审稿人教练完整流程"
+  default_prompt: "Use $helper-paper to start my daily paper reading workflow."

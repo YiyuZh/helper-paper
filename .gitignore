@@ -1,0 +1,56 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local archives and backups
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.bak
+*.backup
+*.backup-*
+*.tmp
+*.log
+.env
+.env.*
+config_private.py
+apikey.local.ini
+apikey.private.ini
+apikey.ini
+translation_staging/
+_staging/
+
+# External tool source lives outside this package
+external-tools/
+gpt_academic/
+ChatPaper/
+
+# Personal paper vault data should not be committed to this skill package
+paper/
+.obsidian/
+00_inbox/
+01_candidates/
+02_daily/
+03_notes/
+04_full_readers/
+05_reviewer_coach/
+98_system/
+99_templates/
+*.pdf
+translation_cache.json
+
+# Installed skill backups
+helper-paper.backup-*/
+helper-paper-skill.backup-*/
+gpt-academic.backup-*/
+chatpaper.backup-*/

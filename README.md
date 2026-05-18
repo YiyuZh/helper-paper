@@ -450,35 +450,3 @@ helper-paper/scripts/check_translation_providers.py
 helper-paper/scripts/check_reader_integrity.py
 helper-paper/scripts/patch_chatpaper_mimo.py
 ```
-
-## GitHub 上传与不要提交的内容
-
-首次上传：
-
-```powershell
-cd E:\skills\helper-paper-skill
-git init
-git add .
-git commit -m "Initial helper-paper skill package"
-git branch -M main
-git remote add origin <你的仓库地址>
-git push -u origin main
-```
-
-后续更新：
-
-```powershell
-git add .
-git commit -m "Update helper-paper skill"
-git push
-```
-
-本仓库只保存 skill 规则和安装文档，不保存你的个人论文库数据。不要提交：
-
-- Obsidian vault / `paper/`
-- PDF 文件
-- 中英全文 reader 输出
-- `translation_cache.json`
-- `.obsidian/`
-- daily notes、个人阅读笔记、WARN 记忆文件的本地运行状态
-- `.env`、`apikey.ini` 或任何 API key

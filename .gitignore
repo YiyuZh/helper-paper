@@ -17,6 +17,7 @@ __pycache__/
 *.tar
 *.tar.gz
 *.bak
+*.helper-paper.bak
 *.backup
 *.backup-*
 *.tmp
@@ -24,6 +25,8 @@ __pycache__/
 .env
 .env.*
 config_private.py
+config.local.json
+helper-paper/config.local.json
 apikey.local.ini
 apikey.private.ini
 apikey.ini
@@ -31,9 +34,9 @@ translation_staging/
 _staging/
 
 # External tool source lives outside this package
-external-tools/
-gpt_academic/
-ChatPaper/
+/external-tools/
+/gpt_academic/
+/ChatPaper/
 
 # Personal paper vault data should not be committed to this skill package
 paper/

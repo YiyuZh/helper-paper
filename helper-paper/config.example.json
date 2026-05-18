@@ -1,0 +1,15 @@
+{
+  "vault_root": "paper",
+  "external_tools_root": "%USERPROFILE%\\helper-paper-external-tools",
+  "codex_skills_dir": "%USERPROFILE%\\.codex\\skills",
+  "default_provider": "auto",
+  "production_provider": "deepseek",
+  "production_model": "deepseek-v4-pro",
+  "fallback_provider": "mimo",
+  "fallback_model": "mimo-v2.5-pro",
+  "notes": [
+    "Copy this file to config.local.json or set environment variables instead.",
+    "Environment variables override these values: HELPER_PAPER_VAULT_ROOT, HELPER_PAPER_EXTERNAL_TOOLS_ROOT, HELPER_PAPER_CODEX_SKILLS_DIR.",
+    "Do not store API keys in this file."
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "GPT Academic"
+  short_description: "Wrapper for the local gpt_academic academic paper translation tool"
+  default_prompt: "Use $gpt-academic to translate or inspect an academic paper with the local gpt_academic tool."

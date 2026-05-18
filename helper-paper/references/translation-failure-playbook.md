@@ -33,10 +33,10 @@ If any step fails, keep the existing reader unchanged and record the failure in 
 | Legacy model fallback | 400 `Not supported model` | GPT Academic or ChatPaper defaulted to `gpt-3.5-turbo-16k` | Override model to `mimo-v2.5-pro`; never let old OpenAI model names reach MiMo. |
 | GPT Academic rejects `tp-...` key | Key validation fails before request | GPT Academic default key regex does not accept token-plan keys | Set `CUSTOM_API_KEY_PATTERN=^tp-[a-zA-Z0-9]+$`. |
 | Empty MiMo smoke-test content | HTTP 200 but no useful answer | Too few completion tokens; reasoning consumed the budget | Use short "Return only ok" prompts and at least `max_completion_tokens=512`. Treat empty content as failure. |
-| Empty DeepSeek V4 smoke-test content | HTTP 200 but final content is empty | `deepseek-v4-pro` / `deepseek-v4-flash` can spend most completion tokens on reasoning | Use at least `max_completion_tokens=512` or `max_tokens=512` for smoke tests. Treat empty final content as failure. |
+| Empty DeepSeek V4 smoke-test content | HTTP 200 but final content is empty | `deepseek-v4-pro` / `deepseek-v4-flash` can spend most completion tokens on reasoning | Use `max_tokens=512` for DeepSeek smoke tests. Treat empty content as failure. |
 | ChatPaper reads wrong config | Requests go to OpenAI official API or wrong base | Running from ChatPaper repo root picked up upstream `apikey.ini` | Run ChatPaper from a temporary working directory with temporary config only. |
 | ChatPaper BOM config failure | `MissingSectionHeaderError` with `\ufeff[OpenAI]` | PowerShell `Set-Content -Encoding UTF8` wrote BOM | Write temp `apikey.ini` with BOM-less UTF-8. |
-| ChatPaper `response_ms` crash | Successful MiMo response retried and final output empty | MiMo-compatible response had `response_ms=None` | Patch ChatPaper to use `(getattr(response, "response_ms", 0) or 0) / 1000.0`. |
+| ChatPaper `response_ms` crash | Successful MiMo response retried and final output empty | MiMo-compatible response had `response_ms=None` | Run `patch_chatpaper_mimo.py --check`; if needed, use explicit `--apply` so a backup is created. |
 | PowerShell Chinese corruption | Static Chinese labels become `?` | Inline script was sent through non-UTF-8 console encoding | Set UTF-8 first, or keep temporary scripts ASCII-only and use external UTF-8 files. |
 | Invalid model JSON | `zh` field becomes an object or model returns prose instead of JSON | Model did not follow strict schema | Normalize non-string JSON values; fall back to plain translation; cache after each block. |
 | References over-translated | Reference list becomes noisy and less useful | Bibliography was translated line by line | Preserve English references and add one Chinese note; do not translate every citation. |
@@ -77,7 +77,7 @@ Do not write the API key into these files. Set `MIMO_API_KEY` only in the runtim
 
 If ChatPaper requires an `apikey.ini`, create it only in a temporary working directory. The file may contain provider metadata, but the actual key should come from `OPENAI_KEY` or another runtime environment variable whenever possible.
 
-When a temporary file is unavoidable, write it with BOM-less UTF-8 and delete the directory after the run. Never run ChatPaper from `E:\skills\external-tools\ChatPaper` when using custom provider config.
+When a temporary file is unavoidable, write it with BOM-less UTF-8 and delete the directory after the run. Never run ChatPaper from the upstream repository root when using custom provider config; use a temporary working directory and point it at the resolved `<external-tools-root>\ChatPaper` checkout.
 
 ## Output Acceptance Gate
 

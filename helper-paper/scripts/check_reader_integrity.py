@@ -170,8 +170,21 @@ def main() -> int:
         notes, error = read_utf8(translation_notes)
         if error:
             issues.append(f"translation_notes.md:{error}")
-        elif not any(token in notes for token in ("MiMo", "DeepSeek", "GPT Academic", "ChatPaper", "Translation")):
-            warnings.append("translation_notes.md lacks provider/tool status markers")
+        else:
+            required_note_tokens = (
+                "provider",
+                "model",
+                "command",
+                "api_status",
+                "tool_status",
+                "failures",
+                "review_notes",
+            )
+            missing_note_tokens = [token for token in required_note_tokens if token not in notes]
+            if missing_note_tokens:
+                issues.append("translation_notes.md missing audit fields: " + ", ".join(missing_note_tokens))
+            if not any(token in notes for token in ("MiMo", "DeepSeek", "GPT Academic", "ChatPaper", "Translation", "deepseek", "mimo")):
+                warnings.append("translation_notes.md lacks provider/tool status markers")
 
     if assets_dir.exists() and not assets_dir.is_dir():
         issues.append("assets exists but is not a directory")
@@ -194,4 +207,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

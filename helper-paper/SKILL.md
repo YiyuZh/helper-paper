@@ -7,11 +7,16 @@ description: "Daily academic paper-reading workflow for helper paper, start my d
 
 ## Core Rule
 
-Operate the paper-reading vault as the source of truth:
+Operate the user's paper-reading vault as the source of truth.
 
-`E:\sci\commercial science\commercialscience\paper`
+Resolve the vault root in this order:
 
-At the start of every task, read the vault controller first:
+1. `HELPER_PAPER_VAULT_ROOT`
+2. `helper-paper/config.local.json` if the user created one
+3. `helper-paper/config.example.json`
+4. an explicitly provided `--root` or path in the user request
+
+At the start of every task, read the vault controller first when it exists:
 
 `paper_daily_orchestration_memory.md`
 
@@ -20,13 +25,13 @@ Then read only the files needed for the task. For a normal daily start, read the
 ## Workflow
 
 1. Identify the user intent: daily start, candidate search, bilingual reader generation, mentor-led reading, understanding check/correction, deep read, PDF download, Reviewer Coach update, WARN archiving, or full-reader preparation.
-2. Run `scripts/check_paper_vault.py --root "E:\sci\commercial science\commercialscience\paper"` when the vault structure is uncertain.
+2. Run `scripts/check_paper_vault.py --root "<paper-vault-root>"` when the vault structure is uncertain. Use `--profile author-demo` only for the original local demonstration vault.
 3. For daily starts and carry-over updates, follow `references/orchestration.md`.
 4. If the user reports unfinished reading, update carry-over memory and the start-here dashboard.
 5. If the user reports a completed paper, update memory only after user reading notes and Codex correction are complete.
 6. If the selected paper PDF is missing, download it from the verified official/arXiv/ACL source into `00_inbox/pdfs/`.
 7. For English papers the user needs to read, create or use a bilingual reader under `04_full_readers/<paper-short-name>/`.
-8. Before any external translation run, read `references/translation-failure-playbook.md` and run provider/tool preflight. Current production provider for the user's MiMo subscription route is the token-plan OpenAI-compatible endpoint.
+8. Before any external translation run, read `references/translation-failure-playbook.md` and run provider/tool preflight. Current production provider is DeepSeek Pro; MiMo token-plan is fallback.
 9. Keep full-reader source text separate from the user's understanding notes. User understanding and mentor corrections belong in the matching `03_notes/` paper note.
 10. For candidate and metadata decisions, follow `references/quality-rules.md`.
 11. For Reviewer Coach teaching and WARN memory, follow `references/reviewer-coach.md`.
@@ -53,7 +58,7 @@ Then read only the files needed for the task. For a normal daily start, read the
 - Do not treat LLM scores as human scores or gold labels.
 - Do not repeat WARN items already archived in `paper_real_learn_for_warn.md`.
 - Do not create full-paper readers unless the user asks for full-text alignment or bilingual reading.
-- Do not replace an existing reader if `gpt-academic` or `chatpaper` fails, if no API key is configured, or if output cannot be traced to source blocks.
+- Do not replace an existing reader if `gpt-academic` or `chatpaper` fails, if no provider is `ready`, or if output cannot be traced to source blocks.
 - Do not run whole-paper translation before the translation failure playbook has been applied: provider smoke test, GPT Academic smoke test, ChatPaper smoke test, UTF-8 setup, staging output, reader integrity check, and key leakage scan.
 - Do not write DeepSeek, Xiaomi, OpenAI, Anthropic, or other API keys into GitHub files, SKILL.md, README, Obsidian notes, vault memory, or translation outputs.
 - Do not present external-tool output as finished unless `translation_notes.md` records tool name, upstream revision, command, API status, output status, and any failure.
@@ -64,11 +69,9 @@ Then read only the files needed for the task. For a normal daily start, read the
 
 ## Current Defaults
 
-Current vault state is dynamic and must be verified from the vault files. As of 2026-05-17:
+Current vault state is dynamic and must be verified from the vault files.
 
-- P1 has an AI-generated guide and a bilingual full-reader artifact, but the user has not completed personal reading.
-- P1 remains the current default mentor-led reading object.
-- WARN-001, WARN-002, and WARN-003 are active at `0/5`.
-- No WARN has been archived.
-- P4 is the next paper after the user finishes P1.
+- Do not assume P1/P4/P5 exist in a public user's vault.
+- If a vault was created from the generic initializer, start from the start-here dashboard file and `paper_daily_orchestration_memory.md`.
+- If the user is working with the original author demo vault, verify that explicitly with `scripts/check_paper_vault.py --profile author-demo`.
 - If the user asks to remake any translation, generate into `_staging` first. Back up and replace the official reader only after `scripts/check_reader_integrity.py` passes.

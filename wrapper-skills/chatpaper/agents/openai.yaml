@@ -1,0 +1,4 @@
+interface:
+  display_name: "ChatPaper"
+  short_description: "Wrapper for the local ChatPaper academic PDF summary and review tool"
+  default_prompt: "Use $chatpaper to summarize or review an academic paper with the local ChatPaper tool."

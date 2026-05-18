@@ -14,6 +14,20 @@
 - **开源工具协同**：主翻译调度 GitHub 开源项目 [binary-husky/gpt_academic](https://github.com/binary-husky/gpt_academic)，摘要复核调度 [kaixindelele/ChatPaper](https://github.com/kaixindelele/ChatPaper)。
 - **Obsidian 友好**：论文关系图谱只看 `paper/03_notes` 的论文笔记互链，系统文件不进入主图谱。
 
+## 适合谁 / 不适合谁
+
+适合：
+
+- 想用 Obsidian 长期管理英文论文阅读的人。
+- 想把“读论文 -> 写理解 -> 被导师式检查 -> 沉淀写作提醒”固定成流程的人。
+- 愿意配置本地 Codex skills、Python 环境和第三方模型 API 的用户。
+
+不适合：
+
+- 只想在线上传 PDF、立刻得到一次性摘要的人。
+- 不想配置本地环境或不想使用第三方模型 API 的用户。
+- 需要 100% 自动完成学术判断且不做人工复核的人。
+
 ## 最终会生成什么
 
 在你的 Obsidian paper vault 中，`helper-paper` 会维护这些产物：
@@ -25,9 +39,16 @@
 - `04_full_readers/`：中英对照全文 reader、source map、翻译说明和图表资产。
 - `05_reviewer_coach/`：Reviewer Coach 学习记忆、WARN 计数和 5 次归档文件。
 
+## 路径约定
+
+README 里的命令使用两个变量，先按你的机器改好：
+
+- `$PaperRoot`：`helper-paper` 管理的论文目录。已有 Obsidian vault 时通常是 `<你的 Obsidian vault>\paper`；新建专用 vault 时可用 `$env:USERPROFILE\Documents\helper-paper-vault\paper`。Obsidian 打开的是它的上级 vault 目录，不是必须直接打开 `paper` 子目录。
+- `$ExternalToolsRoot`：外部开源工具目录，用来放 `gpt_academic` 和 `ChatPaper` 源码。推荐用 `$env:USERPROFILE\helper-paper-external-tools`，也可以通过 `HELPER_PAPER_EXTERNAL_TOOLS_ROOT` 覆盖。
+
 ## 5 分钟快速开始
 
-在 Windows PowerShell 中运行：
+把 `<repo-url>` 换成你的 GitHub 仓库地址，然后在 Windows PowerShell 中运行：
 
 ```powershell
 git clone <repo-url> helper-paper-skill
@@ -35,15 +56,16 @@ cd helper-paper-skill
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Force
 ```
 
-配置 DeepSeek Pro。不要把 key 写进 README、GitHub 仓库或 Obsidian vault；示例环境变量见 [archive/example-env.md](archive/example-env.md)。
-
-检查 provider：
+先创建一个可打开的论文 vault 结构：
 
 ```powershell
-python C:\Users\<你的用户名>\.codex\skills\helper-paper\scripts\check_translation_providers.py --provider auto
+$PaperRoot = Join-Path $env:USERPROFILE "Documents\helper-paper-vault\paper"
+python "$env:USERPROFILE\.codex\skills\helper-paper\scripts\init_paper_vault.py" --root $PaperRoot
+python "$env:USERPROFILE\.codex\skills\helper-paper\scripts\check_paper_vault.py" --root $PaperRoot
+$env:HELPER_PAPER_VAULT_ROOT = $PaperRoot
 ```
 
-然后在 Codex 中说：
+现在可以在 Codex 对话框里说：
 
 ```text
 $helper-paper start my day
@@ -55,17 +77,38 @@ $helper-paper start my day
 每日论文阅读
 ```
 
-如果你还没有准备外部翻译工具或 Obsidian paper vault，继续按下面的“第一次完整使用流程”配置。
+注意：`$helper-paper start my day` 是在 Codex 对话框里输入，不是在 PowerShell 里运行。
+
+如果要生成全文中英 reader，再配置 DeepSeek Pro 和外部工具。`--no-smoke` 只检查环境变量形状；真正生成 reader 前必须跑 `--require-ready`：
+
+```powershell
+python "$env:USERPROFILE\.codex\skills\helper-paper\scripts\check_translation_providers.py" --provider auto --no-smoke
+python "$env:USERPROFILE\.codex\skills\helper-paper\scripts\check_translation_providers.py" --provider auto --require-ready
+```
+
+## 最快验证安装
+
+如果你只想确认 skill 安装成功，不需要先准备论文 vault 或 API key：
+
+```powershell
+$TempSkills = Join-Path $env:TEMP "helper-paper-skills-test"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -CodexSkillsDir $TempSkills -Force
+python "$env:USERPROFILE\.codex\skills\.system\skill-creator\scripts\quick_validate.py" "$TempSkills\helper-paper"
+python "$env:USERPROFILE\.codex\skills\.system\skill-creator\scripts\quick_validate.py" "$TempSkills\gpt-academic"
+python "$env:USERPROFILE\.codex\skills\.system\skill-creator\scripts\quick_validate.py" "$TempSkills\chatpaper"
+```
+
+这一步只证明 skill 包能安装和被 Codex 识别，不证明翻译 provider 已经可用。
 
 ## 第一次完整使用流程
 
 1. 安装 Codex 本地 skill：运行仓库根目录的 `install.ps1`。
-2. 安装外部开源工具：把 `gpt_academic` 和 `ChatPaper` clone 到 `E:\skills\external-tools\`。
-3. 配置 DeepSeek Pro API：设置 `DEEPSEEK_API_KEY`、`DEEPSEEK_API_BASE_URL`、`DEEPSEEK_MODEL`。
-4. 准备 Obsidian paper vault：默认路径是 `E:\sci\commercial science\commercialscience\paper`。
-5. 运行 provider 检查：确认 `auto` 默认选择 `deepseek`，模型是 `deepseek-v4-pro`。
-6. 在 Codex 中启动：`$helper-paper start my day`。
-7. 打开 Obsidian 里的 `000_开始这里.md`。
+2. 准备 `$PaperRoot`：新用户先用 `init_paper_vault.py` 创建基础结构；已有 Obsidian vault 用户把 `$PaperRoot` 指向 `<你的 Obsidian vault>\paper`。
+3. 在 Codex 中启动：`$helper-paper start my day`。
+4. 打开 Obsidian vault 里的 `paper/000_开始这里.md`。
+5. 如果需要全文中英 reader，再安装外部开源工具：把 `gpt_academic` 和 `ChatPaper` clone 到 `$ExternalToolsRoot`。
+6. 配置 DeepSeek Pro API：设置 `DEEPSEEK_API_KEY`、`DEEPSEEK_API_BASE_URL`、`DEEPSEEK_MODEL`。
+7. 运行 provider 检查：`--no-smoke` 看配置，`--require-ready` 看真实可用；正式生成 reader 前必须 ready。
 8. 按入口提示阅读：中英 reader -> 精读笔记 -> 理解检查 -> 完成确认。
 
 ## 日常使用口令
@@ -85,19 +128,19 @@ $helper-paper start my day
 写完某一块理解后，让 Codex 检查：
 
 ```text
-P1 我写完摘要和引言理解了，请检查我的理解。
+<paper-id> 我写完摘要和引言理解了，请检查我的理解。
 ```
 
 当天没读完，记录明天续读：
 
 ```text
-P1 今天读到方法部分，请记录未完成，明天继续。
+<paper-id> 今天读到方法部分，请记录未完成，明天继续。
 ```
 
 完成全文阅读和理解检查后，才更新完成状态：
 
 ```text
-P1 我已完成全文阅读和理解检查，请更新记忆并安排下一篇。
+<paper-id> 我已完成全文阅读和理解检查，请更新记忆并安排下一篇。
 ```
 
 重要规则：
@@ -141,7 +184,7 @@ python -m pip install pdfplumber pypdf pillow
 C:\Users\<你的用户名>\.codex\skills\helper-paper
 ```
 
-如果仓库中存在 `wrapper-skills/`，安装脚本也会把 `gpt-academic` 和 `chatpaper` wrapper 一起安装到同一个 Codex skills 目录。外部大型源码仍然需要放在 `E:\skills\external-tools\`，不会被复制进 `.codex\skills`。
+如果仓库中存在 `wrapper-skills/`，安装脚本也会把 `gpt-academic` 和 `chatpaper` wrapper 一起安装到同一个 Codex skills 目录。外部大型源码仍然需要放在 `$ExternalToolsRoot`，不会被复制进 `.codex\skills`。
 
 除 `helper-paper`、`gpt-academic` wrapper、`chatpaper` wrapper 之外，本文后面“配套 Skills 下载清单”列出的其他 skills 都不会由本脚本安装。用户需要自行到 Codex skills 网站、Codex 插件/技能市场、GitHub 或搜索引擎搜索下载。
 
@@ -155,6 +198,29 @@ C:\Users\<你的用户名>\.codex\skills\helper-paper
 
 ```text
 helper-paper.backup-YYYYMMDD-HHmmss
+```
+
+## 新建或接入 Obsidian paper vault
+
+新建空 vault 结构：
+
+```powershell
+$PaperRoot = Join-Path $env:USERPROFILE "Documents\helper-paper-vault\paper"
+python "$env:USERPROFILE\.codex\skills\helper-paper\scripts\init_paper_vault.py" --root $PaperRoot
+python "$env:USERPROFILE\.codex\skills\helper-paper\scripts\check_paper_vault.py" --root $PaperRoot
+```
+
+接入已有 vault：
+
+```powershell
+$env:HELPER_PAPER_VAULT_ROOT = "<你的 Obsidian vault>\paper"
+python "$env:USERPROFILE\.codex\skills\helper-paper\scripts\check_paper_vault.py" --root $env:HELPER_PAPER_VAULT_ROOT
+```
+
+作者演示 vault 的 P1/P4 检查只在需要复现作者本机样例时使用：
+
+```powershell
+python "$env:USERPROFILE\.codex\skills\helper-paper\scripts\check_paper_vault.py" --root $env:HELPER_PAPER_VAULT_ROOT --profile author-demo
 ```
 
 ## 外部开源工具：gpt_academic 与 ChatPaper
@@ -173,34 +239,44 @@ helper-paper.backup-YYYYMMDD-HHmmss
 - 在本系统中的角色：摘要与理解复核后端。
 - 负责内容：生成摘要、贡献、方法、局限和阅读问答，帮助用户理解论文。
 
-推荐把外部工具放在：
+推荐用 `$ExternalToolsRoot` 指定外部工具目录：
 
-```text
-E:\skills\external-tools\
+```powershell
+$ExternalToolsRoot = if ($env:HELPER_PAPER_EXTERNAL_TOOLS_ROOT) {
+  $env:HELPER_PAPER_EXTERNAL_TOOLS_ROOT
+} else {
+  Join-Path $env:USERPROFILE "helper-paper-external-tools"
+}
+$env:HELPER_PAPER_EXTERNAL_TOOLS_ROOT = $ExternalToolsRoot
 ```
 
 首次安装外部工具：
 
 ```powershell
-mkdir E:\skills\external-tools
-git clone --depth=1 https://github.com/binary-husky/gpt_academic.git E:\skills\external-tools\gpt_academic
-git clone --depth=1 https://github.com/kaixindelele/ChatPaper.git E:\skills\external-tools\ChatPaper
+New-Item -ItemType Directory -Force -Path $ExternalToolsRoot | Out-Null
+git clone --depth=1 https://github.com/binary-husky/gpt_academic.git (Join-Path $ExternalToolsRoot "gpt_academic")
+git clone --depth=1 https://github.com/kaixindelele/ChatPaper.git (Join-Path $ExternalToolsRoot "ChatPaper")
 ```
 
 建议为两个工具分别使用 Python 3.10 环境。当前验证过的本地形式是 conda 环境放在各项目 `.venv` 目录：
 
 ```powershell
-conda create -p E:\skills\external-tools\gpt_academic\.venv python=3.10 -y
-conda create -p E:\skills\external-tools\ChatPaper\.venv python=3.10 -y
+$GptAcademic = Join-Path $ExternalToolsRoot "gpt_academic"
+$ChatPaper = Join-Path $ExternalToolsRoot "ChatPaper"
 
-E:\skills\external-tools\gpt_academic\.venv\python.exe -m pip install --prefer-binary -r E:\skills\external-tools\gpt_academic\requirements.txt
-E:\skills\external-tools\gpt_academic\.venv\python.exe -m pip install "setuptools<81"
+conda create -p (Join-Path $GptAcademic ".venv") python=3.10 -y
+conda create -p (Join-Path $ChatPaper ".venv") python=3.10 -y
 
-E:\skills\external-tools\ChatPaper\.venv\python.exe -m pip install --prefer-binary -r E:\skills\external-tools\ChatPaper\requirements.txt
-E:\skills\external-tools\ChatPaper\.venv\python.exe -m pip install "setuptools<81"
+& (Join-Path $GptAcademic ".venv\python.exe") -m pip install --prefer-binary -r (Join-Path $GptAcademic "requirements.txt")
+& (Join-Path $GptAcademic ".venv\python.exe") -m pip install "setuptools<81"
+
+& (Join-Path $ChatPaper ".venv\python.exe") -m pip install --prefer-binary -r (Join-Path $ChatPaper "requirements.txt")
+& (Join-Path $ChatPaper ".venv\python.exe") -m pip install "setuptools<81"
 ```
 
-日常使用时，用户不需要手动打开这两个项目；`helper-paper` 会在需要生成 reader 时调度 wrapper skills。
+日常使用时，用户通常不需要手动打开这两个项目；`helper-paper` 会按 wrapper 规则检查这些工具和 provider。当前稳定的 `run_translation_pipeline.py` 负责把外部工具已经产出的 source blocks、translation blocks 和 ChatPaper summary 组装成 reader，并做 staging、完整性检查和安全替换。
+
+外部工具只在生成或重做全文中英 reader 时需要。基础的每日启动、候选管理、个人理解检查和 Reviewer Coach 可以先跑通，再逐步配置全文翻译链路。
 
 ## API Key 配置
 
@@ -229,6 +305,23 @@ GPT Academic 走 MiMo token-plan 时还需要：
 - `API_URL_REDIRECT`
 
 完整示例命令见 [archive/example-env.md](archive/example-env.md)。如果没有 API key，或 smoke test 失败，`helper-paper` 只会完成安装和检查，不会替换现有 reader，也不会伪装已经完成翻译。
+
+## 首次 demo 建议
+
+1. 用 `init_paper_vault.py` 创建一个空 vault。
+2. 在 Codex 中输入 `$helper-paper start my day`。
+3. 先确认 `000_开始这里.md`、`02_daily/carry_over_todo.md`、`05_reviewer_coach/` 已经可用。
+4. 再配置 DeepSeek Pro 和外部工具，尝试为一篇公开 PDF 生成 reader。
+5. 生成 reader 后，先写一段自己的理解，再让 Codex 检查。不要把 reader 生成当成已读完。
+
+## 外部工具会做什么
+
+| 项目 | 会发生什么 | 你需要知道什么 |
+| --- | --- | --- |
+| 克隆外部源码 | 从 GitHub 下载 `binary-husky/gpt_academic` 和 `kaixindelele/ChatPaper` 到 `$ExternalToolsRoot` | 本仓库只安装 wrapper skills，不打包外部源码 |
+| 安装 Python 依赖 | 在两个外部项目的 `.venv` 中安装依赖 | 这一步只影响 `$ExternalToolsRoot`，不写入 Obsidian vault |
+| 调用模型 API | 生成 reader 时会把论文片段发送给 DeepSeek Pro 或 fallback provider | 成本和合规由用户自行确认 |
+| Patch ChatPaper | 只有你显式运行 `patch_chatpaper_mimo.py --apply` 才会修改外部 ChatPaper 文件 | 默认 `--check` 是只读检查，并会在 apply 时生成备份 |
 
 ## 配套 Skills 下载清单
 
@@ -308,6 +401,18 @@ python C:\Users\<你的用户名>\.codex\skills\.system\skill-creator\scripts\qu
 python C:\Users\<你的用户名>\.codex\skills\.system\skill-creator\scripts\quick_validate.py C:\Users\<你的用户名>\.codex\skills\gpt-academic
 python C:\Users\<你的用户名>\.codex\skills\.system\skill-creator\scripts\quick_validate.py C:\Users\<你的用户名>\.codex\skills\chatpaper
 python C:\Users\<你的用户名>\.codex\skills\helper-paper\scripts\check_translation_providers.py --provider auto --no-smoke
+```
+
+`--no-smoke` 只检查环境变量和默认配置，不证明 provider 可用于生产翻译。正式生成 reader 前应运行：
+
+```powershell
+python C:\Users\<你的用户名>\.codex\skills\helper-paper\scripts\check_translation_providers.py --provider auto --require-ready
+```
+
+安装 ChatPaper 外部工具后，再检查 MiMo 兼容 patch 状态：
+
+```powershell
+$env:HELPER_PAPER_EXTERNAL_TOOLS_ROOT = "<你的外部工具目录>"
 python C:\Users\<你的用户名>\.codex\skills\helper-paper\scripts\patch_chatpaper_mimo.py --check
 ```
 
@@ -352,18 +457,12 @@ foreach ($skill in $skills) {
 如果你使用默认论文库路径，可以继续检查 vault：
 
 ```powershell
-python C:\Users\<你的用户名>\.codex\skills\helper-paper\scripts\check_paper_vault.py --root "E:\sci\commercial science\commercialscience\paper"
+python C:\Users\<你的用户名>\.codex\skills\helper-paper\scripts\check_paper_vault.py --root "<你的 Obsidian vault>\paper"
 ```
 
 如果你的 Obsidian paper vault 在其他位置，把 `--root` 改成你的 `paper` 目录。
 
 ## 默认 Obsidian paper vault
-
-当前 skill 默认围绕以下路径工作：
-
-```text
-E:\sci\commercial science\commercialscience\paper
-```
 
 推荐 vault 入口是：
 
@@ -371,7 +470,13 @@ E:\sci\commercial science\commercialscience\paper
 paper\000_开始这里.md
 ```
 
-如果给其他人使用，可以让对方创建同名结构，或在安装后修改 `helper-paper/SKILL.md` 与 `helper-paper/references/orchestration.md` 中的默认路径。
+推荐用环境变量指定实际 vault：
+
+```powershell
+$env:HELPER_PAPER_VAULT_ROOT = "<你的 Obsidian vault>\paper"
+```
+
+也可以复制 `helper-paper/config.example.json` 为 `helper-paper/config.local.json` 后修改本地路径。不要把 `config.local.json` 或 API key 提交到 GitHub。
 
 ## 目录结构
 
@@ -396,8 +501,11 @@ helper-paper-skill/
     │   └── translation-failure-playbook.md
     └── scripts/
         ├── check_paper_vault.py
+        ├── init_paper_vault.py
         ├── check_translation_providers.py
         ├── check_reader_integrity.py
+        ├── run_translation_pipeline.py
+        ├── check_release_package.py
         └── patch_chatpaper_mimo.py
 ```
 
@@ -406,7 +514,7 @@ helper-paper-skill/
 如果本仓库已经绑定 GitHub，进入仓库根目录：
 
 ```powershell
-cd E:\skills\helper-paper-skill
+cd <你的 helper-paper-skill 仓库目录>
 git pull
 .\install.ps1
 ```
@@ -414,12 +522,18 @@ git pull
 外部翻译工具更新：
 
 ```powershell
-cd E:\skills\external-tools\gpt_academic
+$ExternalToolsRoot = if ($env:HELPER_PAPER_EXTERNAL_TOOLS_ROOT) {
+  $env:HELPER_PAPER_EXTERNAL_TOOLS_ROOT
+} else {
+  Join-Path $env:USERPROFILE "helper-paper-external-tools"
+}
+
+cd (Join-Path $ExternalToolsRoot "gpt_academic")
 git pull
 .\.venv\python.exe -m pip install --prefer-binary -r requirements.txt
 .\.venv\python.exe -m pip install "setuptools<81"
 
-cd E:\skills\external-tools\ChatPaper
+cd (Join-Path $ExternalToolsRoot "ChatPaper")
 git pull
 .\.venv\python.exe -m pip install --prefer-binary -r requirements.txt
 .\.venv\python.exe -m pip install "setuptools<81"
@@ -429,7 +543,7 @@ git pull
 
 ## 故障排查
 
-P1 重译后沉淀下来的硬规则，后续 P4/P5 也按这个执行：
+全文 reader 重译后沉淀下来的硬规则，后续论文都按这个执行：
 
 - MiMo key 可用但返回 `Invalid API Key`：token-plan key 必须用 `https://token-plan-cn.xiaomimimo.com/v1`。
 - 工具自动用了旧 OpenAI 模型：不要让 `gpt-3.5-turbo-16k` 进入 MiMo，强制使用 `mimo-v2.5-pro`。
@@ -437,7 +551,7 @@ P1 重译后沉淀下来的硬规则，后续 P4/P5 也按这个执行：
 - MiMo smoke test 200 但内容空：token 太少，smoke test 至少给足输出 token，空内容按失败处理。
 - ChatPaper 读错配置：从临时工作目录运行，不从 ChatPaper 仓库根目录读取旧 `apikey.ini`。
 - ChatPaper 配置文件报 BOM 错：临时 `apikey.ini` 必须写成无 BOM UTF-8。
-- ChatPaper 成功响应被当成失败：运行 `patch_chatpaper_mimo.py`，让 `response_ms` 变成可选字段。
+- ChatPaper 成功响应被当成失败：先运行 `patch_chatpaper_mimo.py --check`；如需修改外部 ChatPaper，显式运行 `patch_chatpaper_mimo.py --apply`。
 - 中文标签变成 `???`：PowerShell 先设置 UTF-8，再运行含中文脚本。
 - 翻译中途失败覆盖旧 reader：必须先生成到 `_staging`，校验通过后再备份并替换正式 reader。
 - API key 泄漏：完成前扫描 `.codex\skills`、GitHub 包、vault、reader 输出。
@@ -450,3 +564,43 @@ helper-paper/scripts/check_translation_providers.py
 helper-paper/scripts/check_reader_integrity.py
 helper-paper/scripts/patch_chatpaper_mimo.py
 ```
+
+## 发布前检查与 GitHub 上传
+
+发布前在仓库根目录运行 release gate。这个检查要求工作区干净、必需文件已被 Git 跟踪、没有 gitlink/submodule、没有明显密钥或本地 vault 数据：
+
+```powershell
+python helper-paper\scripts\check_release_package.py --root .
+git status --short
+```
+
+如果只是本地开发中想提前看格式和安全扫描，可临时使用：
+
+```powershell
+python helper-paper\scripts\check_release_package.py --root . --allow-dirty
+```
+
+上传到 GitHub 的基本流程：
+
+```powershell
+git init
+git add .
+git commit -m "Initial helper-paper skill package"
+git remote add origin <你的 GitHub 仓库地址>
+git push -u origin main
+```
+
+不要提交这些内容：
+
+- API key、`.env`、`apikey.ini`、`config.local.json`。
+- 论文 PDF、Obsidian vault、全文 reader 输出、translation cache。
+- `gpt_academic` / `ChatPaper` 外部源码目录。
+- 任何包含个人路径、账号、论文私有数据的临时文件。
+
+## 隐私、成本和限制
+
+- 论文 PDF、Obsidian vault、个人阅读笔记和 WARN 记忆都应留在本地，不提交到本仓库。
+- 使用 DeepSeek、MiMo、OpenAI 或其他第三方 provider 时，论文片段可能会发送到对应 API；请根据你的合规要求决定是否启用全文翻译。
+- 全文 reader 生成会消耗 API token，长论文成本更高。
+- 如果 provider、外部工具或完整性检查失败，`helper-paper` 应保留旧 reader，不覆盖正式产物。
+- `helper-paper` 负责辅助阅读和质量检查，不替代你对论文结论、引用适配和最终写作表述的人工判断。

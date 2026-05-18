@@ -62,7 +62,7 @@ PROVIDERS = {
         anthropic_base_envs=("MIMO_ANTHROPIC_BASE_URL", "XIAOMI_ANTHROPIC_BASE_URL"),
         default_anthropic_base_url="https://token-plan-cn.xiaomimimo.com/anthropic",
         notes=(
-            "Production provider for token-plan/subscription MiMo keys in helper-paper.",
+            "Fallback provider for token-plan/subscription MiMo keys in helper-paper.",
             "Token-plan OpenAI-compatible base URL is https://token-plan-cn.xiaomimimo.com/v1.",
             "Official console keys may require a different official base URL; set MIMO_API_BASE_URL explicitly.",
             "Never let legacy OpenAI model names such as gpt-3.5-turbo-16k reach MiMo.",
@@ -187,8 +187,10 @@ def smoke_openai_compatible(provider: Provider, key: str, base_url: str, model: 
         "temperature": 0,
         "stream": False,
     }
-    if provider.name in {"mimo", "deepseek"}:
+    if provider.name == "mimo":
         payload["max_completion_tokens"] = 512
+    elif provider.name == "deepseek":
+        payload["max_tokens"] = 512
     else:
         payload["max_tokens"] = 8
 
@@ -296,6 +298,7 @@ def check_provider(provider: Provider, *, smoke: bool, check_anthropic: bool, ti
     result["base_url"] = final_base
 
     if not smoke:
+        result["status"] = "smoke_skipped"
         result["smoke"] = "skipped"
     else:
         smoke_result = smoke_openai_compatible(provider, key, final_base, result["model"], timeout)
@@ -324,7 +327,7 @@ def select_auto(results: list[dict[str, Any]]) -> str | None:
     # Prefer DeepSeek Pro as the production route; keep MiMo as fallback.
     for preferred in ("deepseek", "mimo"):
         for result in results:
-            if result["provider"] == preferred and result["status"] in {"ready", "configured"}:
+            if result["provider"] == preferred and result["status"] == "ready":
                 return preferred
     return None
 
@@ -344,7 +347,7 @@ def main() -> int:
     parser.add_argument("--provider", choices=("auto", "deepseek", "mimo"), default="auto")
     parser.add_argument("--no-smoke", action="store_true", help="Only inspect environment variables; do not call APIs.")
     parser.add_argument("--check-anthropic", action="store_true", help="Also smoke-test MiMo's Anthropic-compatible endpoint.")
-    parser.add_argument("--require-ready", action="store_true", help="Exit non-zero if no provider is ready/configured.")
+    parser.add_argument("--require-ready", action="store_true", help="Exit non-zero if no provider passed smoke test and reached ready state.")
     parser.add_argument("--timeout", type=int, default=30)
     args = parser.parse_args()
 
@@ -354,21 +357,33 @@ def main() -> int:
         for name in names
     ]
     selected = select_auto(results) if args.provider == "auto" else (
-        results[0]["provider"] if results and results[0]["status"] in {"ready", "configured"} else None
+        results[0]["provider"] if results and results[0]["status"] == "ready" else None
     )
+    candidate_provider = None
+    if selected is None:
+        for preferred in ("deepseek", "mimo"):
+            for result in results:
+                if result["provider"] == preferred and result["status"] in {"configured", "smoke_skipped"}:
+                    candidate_provider = preferred
+                    break
+            if candidate_provider:
+                break
 
     report = {
         "provider_strategy": args.provider,
         "selected_provider": selected,
+        "candidate_provider": candidate_provider,
         "results": results,
         "secrets_printed": False,
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
-    if any(result_failed(result, check_anthropic=args.check_anthropic) for result in results):
-        return 1
     if args.require_ready and selected is None:
         return 2
+    if args.provider == "auto" and selected is not None:
+        return 0
+    if any(result_failed(result, check_anthropic=args.check_anthropic) for result in results):
+        return 1
     return 0
 
 

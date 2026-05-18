@@ -2,6 +2,12 @@
 
 Use this reference for "每日论文阅读", "start my day", "helper paper", bilingual reader generation, mentor-led reading, understanding checks, or any request to continue the daily paper-reading workflow.
 
+Resolve paths from environment or config before assuming defaults:
+
+- `HELPER_PAPER_VAULT_ROOT` for the Obsidian paper vault.
+- `HELPER_PAPER_EXTERNAL_TOOLS_ROOT` for `gpt_academic` and `ChatPaper`.
+- `HELPER_PAPER_CODEX_SKILLS_DIR` for local Codex skills.
+
 ## Daily Start
 
 1. Read `paper_daily_orchestration_memory.md`.
@@ -26,13 +32,13 @@ Use this reference for "每日论文阅读", "start my day", "helper paper", bil
 
 ## Carry-Over Updates
 
-When the user says a paper is unfinished, such as `P1 今天只读到方法部分，请记录未完成，明天 start my day 继续。`:
+When the user says a paper is unfinished, such as `<paper-id> 今天只读到方法部分，请记录未完成，明天 start my day 继续。`:
 
 - Update `02_daily/carry_over_todo.md` with the paper, stopping point, next start action, date, and status.
 - Update `000_开始这里.md` under `未完成事项` so the next opening clearly shows where to resume.
 - Do not select a new paper on the next daily start until the carry-over item is resolved.
 
-When the user says a paper is finished, use the stricter completion phrase, such as `P1 我已完成全文阅读和理解检查，请更新记忆并安排下一篇。`:
+When the user says a paper is finished, use the stricter completion phrase, such as `<paper-id> 我已完成全文阅读和理解检查，请更新记忆并安排下一篇。`:
 
 - Update the daily note, deep-reading note, Reviewer Coach memory, and paper relationships as needed.
 - Clear the paper from `carry_over_todo.md`.
@@ -71,7 +77,7 @@ Every deep-reading note must include:
 
 Default role: 论文阅读导师 + 中英对照阅读助手 + 审稿人教练.
 
-For P1 and later papers, guide the user in small blocks:
+For each paper, guide the user in small blocks:
 
 1. Title, abstract, introduction: what problem is being defined, what gap is claimed, what scope is limited.
 2. Method and experiment: what was built, who participated, what data or ratings were collected, what is reproducible.
@@ -94,13 +100,11 @@ For English papers, the reading order is:
 
 ## Current Reading State
 
-As of 2026-05-16:
+Current reading state is vault-specific and must be verified from the user's vault files. Do not assume P1/P4/P5 exist in a public user's vault.
 
-- P1 has an AI guide note and a bilingual reader, but the user has not completed personal reading or understanding checks.
-- P1 is the current default reading object. Start from the bilingual reader with the title, abstract, and introduction.
-- P4 is the default next paper after P1 because it is ACL Findings / NAACL 2024 and supports groundedness, hallucination, and evidence alignment.
-- P5 is the next strong option for LLM evaluator reliability and human scoring.
-- P2 and P3 are useful but should be treated cautiously as arXiv-only or technical-report materials until formal venue status is verified.
+- Generic new vaults start from `000_开始这里.md` and `paper_daily_orchestration_memory.md`.
+- Existing vaults may have carry-over items in `02_daily/carry_over_todo.md`; those take priority.
+- The original author demo vault can be checked with `scripts/check_paper_vault.py --profile author-demo`.
 
 ## End-of-Day Acceptance Check
 
@@ -121,13 +125,13 @@ Confirm:
 Use this route whenever the user asks to remake an English paper reader or says the existing bilingual translation is hard to understand.
 
 1. Verify the PDF exists in `00_inbox/pdfs/`.
-2. Verify `gpt-academic` exists at `C:\Users\lenovo\.codex\skills\gpt-academic\SKILL.md` and the upstream tool exists at `E:\skills\external-tools\gpt_academic`.
-3. Verify `chatpaper` exists at `C:\Users\lenovo\.codex\skills\chatpaper\SKILL.md` and the upstream tool exists at `E:\skills\external-tools\ChatPaper`.
+2. Verify `gpt-academic` exists under the resolved Codex skills directory and the upstream tool exists under the resolved external tools root.
+3. Verify `chatpaper` exists under the resolved Codex skills directory and the upstream tool exists under the resolved external tools root.
 4. Read `references/translation-failure-playbook.md` before running any translation command.
-5. Check provider readiness with `scripts/check_translation_providers.py --provider auto`. For MiMo dual-endpoint checks, add `--provider mimo --check-anthropic`.
+5. Check provider readiness with `scripts/check_translation_providers.py --provider auto --require-ready`. For MiMo dual-endpoint checks, add `--provider mimo --check-anthropic --require-ready`.
 6. If no provider key is configured or every configured provider fails smoke test, stop before translation. Report that tools are installed but generation is blocked. Do not back up or replace the existing reader.
 7. Run short GPT Academic and ChatPaper smoke tests against the selected provider. For MiMo token-plan, require `mimo-v2.5-pro`, `CUSTOM_API_KEY_PATTERN=^tp-[a-zA-Z0-9]+$`, and the token-plan redirect to `/v1/chat/completions`.
-8. Generate into `04_full_readers/_staging/论文短名_YYYYMMDD-HHmmss/`, never directly into the official reader directory.
+8. Generate into `04_full_readers/_staging/论文短名_YYYYMMDD-HHmmss/`, never directly into the official reader directory. Prefer `scripts/run_translation_pipeline.py` for staging, validation, backup, and replace.
 9. Run `gpt-academic` first for the primary translation.
 10. Run `chatpaper` second for summary, contribution, method, limitation, and Q&A review, using a temporary working directory and BOM-less UTF-8 config when needed.
 11. Merge outputs in staging with clear labels: `Original`, `中文翻译`, `ChatPaper 摘要/复核`, and `导师阅读提示`.

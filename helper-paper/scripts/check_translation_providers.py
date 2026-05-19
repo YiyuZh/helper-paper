@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
+
+from helper_paper_config import collect_secret_values, first_env, redact_data, redact_text
 
 
 DEEPSEEK_MODEL_DEPRECATION_DATE = date(2026, 7, 24)
@@ -69,32 +70,6 @@ PROVIDERS = {
         ),
     ),
 }
-
-
-def windows_user_env(name: str) -> str | None:
-    if os.name != "nt":
-        return None
-    try:
-        import winreg  # type: ignore[import-not-found]
-
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
-            value, _ = winreg.QueryValueEx(key, name)
-        if isinstance(value, str) and value:
-            return value
-    except OSError:
-        return None
-    return None
-
-
-def first_env(names: tuple[str, ...]) -> tuple[str | None, str | None]:
-    for name in names:
-        value = os.environ.get(name)
-        if value:
-            return name, value
-        value = windows_user_env(name)
-        if value:
-            return name, value
-    return None, None
 
 
 def chat_url(base_url: str) -> str:
@@ -150,7 +125,14 @@ def parse_anthropic_content(parsed: dict[str, Any]) -> str:
     return ""
 
 
-def http_post_json(url: str, payload: dict[str, Any], headers: dict[str, str], timeout: int) -> dict[str, Any]:
+def http_post_json(
+    url: str,
+    payload: dict[str, Any],
+    headers: dict[str, str],
+    timeout: int,
+    *,
+    secrets: list[str],
+) -> dict[str, Any]:
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
@@ -162,7 +144,7 @@ def http_post_json(url: str, payload: dict[str, Any], headers: dict[str, str], t
             body = response.read().decode("utf-8", errors="replace")
             parsed = json.loads(body)
     except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")[:800]
+        body = redact_text(exc.read().decode("utf-8", errors="replace")[:800], secrets)
         return {
             "ok": False,
             "error_type": "http_error",
@@ -173,7 +155,7 @@ def http_post_json(url: str, payload: dict[str, Any], headers: dict[str, str], t
         return {
             "ok": False,
             "error_type": exc.__class__.__name__,
-            "message": str(exc),
+            "message": redact_text(str(exc), secrets),
         }
     return {"ok": True, "status_code": 200, "parsed": parsed}
 
@@ -202,7 +184,7 @@ def smoke_openai_compatible(provider: Provider, key: str, base_url: str, model: 
     if provider.name == "mimo":
         headers["api-key"] = key
 
-    result = http_post_json(chat_url(base_url), payload, headers, timeout)
+    result = http_post_json(chat_url(base_url), payload, headers, timeout, secrets=collect_secret_values())
     if not result.get("ok"):
         return result
 
@@ -241,7 +223,7 @@ def smoke_anthropic_compatible(key: str, base_url: str, model: str, timeout: int
         "api-key": key,
         "anthropic-version": "2023-06-01",
     }
-    result = http_post_json(anthropic_messages_url(base_url), payload, headers, timeout)
+    result = http_post_json(anthropic_messages_url(base_url), payload, headers, timeout, secrets=collect_secret_values())
     if not result.get("ok"):
         return result
 
@@ -374,8 +356,11 @@ def main() -> int:
         "selected_provider": selected,
         "candidate_provider": candidate_provider,
         "results": results,
-        "secrets_printed": False,
     }
+    secrets = collect_secret_values()
+    report = redact_data(report, secrets)
+    rendered = json.dumps(report, ensure_ascii=False, indent=2)
+    report["secrets_printed"] = any(secret in rendered for secret in secrets)
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
     if args.require_ready and selected is None:

@@ -22,6 +22,8 @@ from typing import Any
 
 SAFE_PAPER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$")
 ANCHOR_RE = re.compile(r"^\s*\[(?:anchor|source_anchor):\s*([^\]]+)\]\s*", re.IGNORECASE)
+SUCCESS_STATUSES = {"success", "ok", "ready", "completed"}
+REQUIRED_RELEASE_TOOLS = ("source_extraction", "gpt_academic", "chatpaper")
 
 
 def read_text(path: Path) -> str:
@@ -131,7 +133,78 @@ def production_inputs(args: argparse.Namespace) -> tuple[list[str], list[str], s
         translation_blocks = translation_blocks[:limit]
         partial = True
 
-    return source_blocks, translation_blocks, read_text(args.chatpaper_md), partial
+    chatpaper_text = read_text(args.chatpaper_md).strip()
+    if args.replace and len(chatpaper_text) < 40:
+        raise SystemExit("--replace requires non-empty ChatPaper review output with at least 40 characters.")
+
+    return source_blocks, translation_blocks, chatpaper_text, partial
+
+
+def load_tool_manifest(path: Path | None, *, require_release: bool) -> dict[str, Any] | None:
+    if path is None:
+        if require_release:
+            raise SystemExit("--replace requires --tool-manifest with successful source_extraction, gpt_academic, and chatpaper runs.")
+        return None
+    if not path.is_file():
+        raise SystemExit(f"Tool manifest not found: {path}")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"Tool manifest is not valid JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise SystemExit("Tool manifest must be a JSON object.")
+
+    if require_release:
+        for tool in REQUIRED_RELEASE_TOOLS:
+            entry = data.get(tool)
+            if not isinstance(entry, dict):
+                raise SystemExit(f"--tool-manifest missing object: {tool}")
+            status = str(entry.get("status") or "").lower()
+            if status not in SUCCESS_STATUSES:
+                raise SystemExit(f"--tool-manifest marks {tool} as not successful: {status or 'missing'}")
+            command = entry.get("command")
+            if not isinstance(command, str) or not command.strip():
+                raise SystemExit(f"--tool-manifest missing command for {tool}")
+            if tool in {"gpt_academic", "chatpaper"}:
+                revision = entry.get("upstream_revision") or entry.get("revision")
+                if not isinstance(revision, str) or not revision.strip() or revision.strip().lower() == "unknown":
+                    raise SystemExit(f"--tool-manifest missing upstream revision for {tool}")
+        failures = data.get("failures", [])
+        if failures:
+            raise SystemExit("--tool-manifest contains failures; refusing --replace.")
+
+    return data
+
+
+def tool_status_from_args(args: argparse.Namespace, manifest: dict[str, Any] | None) -> dict[str, Any]:
+    if manifest is not None:
+        return {
+            "source_extraction": manifest.get("source_extraction"),
+            "gpt_academic": manifest.get("gpt_academic"),
+            "chatpaper": manifest.get("chatpaper"),
+            "manifest": str(args.tool_manifest),
+            "failures": manifest.get("failures", []),
+        }
+    return {
+        "gpt_academic": {
+            "input": str(args.translation_md) if args.translation_md else None,
+            "status": "provided_intermediate" if args.translation_md else "fixture",
+            "command": None,
+            "upstream_revision": args.gpt_academic_revision or "unknown",
+        },
+        "chatpaper": {
+            "input": str(args.chatpaper_md) if args.chatpaper_md else None,
+            "status": "provided_intermediate" if args.chatpaper_md else "fixture",
+            "command": None,
+            "upstream_revision": args.chatpaper_revision or "unknown",
+        },
+        "source_extraction": {
+            "input": str(args.source_md) if args.source_md else None,
+            "status": "provided_intermediate" if args.source_md else "fixture",
+            "command": None,
+        },
+        "pdf": str(args.pdf) if args.pdf else None,
+    }
 
 
 def build_staging(
@@ -142,6 +215,7 @@ def build_staging(
 ) -> tuple[int, bool]:
     staging.mkdir(parents=True, exist_ok=False)
     (staging / "assets").mkdir(exist_ok=True)
+    manifest = load_tool_manifest(args.tool_manifest, require_release=args.replace and not args.fake)
 
     if args.fake:
         source_blocks, translation_blocks, chatpaper_text, partial = fake_inputs(args.max_blocks)
@@ -203,25 +277,13 @@ def build_staging(
         "partial": partial,
         "command": " ".join(sys.argv),
         "api_status": provider_report or {"status": "skipped_for_fake_fixture"},
-        "tool_status": {
-            "gpt_academic": {
-                "input": str(args.translation_md) if args.translation_md else None,
-                "status": "provided_intermediate" if args.translation_md else "fixture",
-                "upstream_revision": args.gpt_academic_revision or "unknown",
-            },
-            "chatpaper": {
-                "input": str(args.chatpaper_md) if args.chatpaper_md else None,
-                "status": "provided_intermediate" if args.chatpaper_md else "fixture",
-                "upstream_revision": args.chatpaper_revision or "unknown",
-            },
-            "source_extraction": {
-                "input": str(args.source_md) if args.source_md else None,
-                "status": "provided_intermediate" if args.source_md else "fixture",
-            },
-            "pdf": str(args.pdf) if args.pdf else None,
-        },
-        "output_status": "partial_staging_generated" if partial else "staging_generated",
-        "failures": [],
+        "tool_status": tool_status_from_args(args, manifest),
+        "output_status": (
+            "partial_staging_generated"
+            if partial
+            else ("validated_for_replacement" if args.replace else "staging_generated")
+        ),
+        "failures": manifest.get("failures", []) if manifest else [],
         "review_notes": [
             "Reader assembled in staging before replacement.",
             "Original blocks come from --source-md, not from translation output.",
@@ -245,21 +307,24 @@ def replace_final(staging: Path, final: Path, backup_root: Path) -> Path | None:
     final.parent.mkdir(parents=True, exist_ok=True)
     incoming = final.parent / f".{final.name}.incoming-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     backup: Path | None = None
+    final_existed = final.exists()
+    backup_made = False
     if incoming.exists():
         shutil.rmtree(incoming)
 
     shutil.copytree(staging, incoming)
     try:
-        if final.exists():
+        if final_existed:
             backup_root.mkdir(parents=True, exist_ok=True)
             backup = backup_root / f"{final.name}_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
             shutil.move(str(final), str(backup))
+            backup_made = True
         incoming.rename(final)
         return backup
     except Exception:
-        if final.exists():
+        if ((not final_existed) or backup_made) and final.exists():
             shutil.rmtree(final, ignore_errors=True)
-        if backup and backup.exists():
+        if backup_made and backup and backup.exists():
             shutil.move(str(backup), str(final))
         if incoming.exists():
             shutil.rmtree(incoming, ignore_errors=True)
@@ -278,6 +343,7 @@ def main() -> int:
     parser.add_argument("--chatpaper-md", type=Path, help="ChatPaper summary/review output.")
     parser.add_argument("--gpt-academic-revision", help="Upstream gpt_academic git revision used to produce --translation-md.")
     parser.add_argument("--chatpaper-revision", help="Upstream ChatPaper git revision used to produce --chatpaper-md.")
+    parser.add_argument("--tool-manifest", type=Path, help="JSON manifest proving upstream source extraction, gpt_academic, and ChatPaper success. Required with --replace.")
     parser.add_argument("--fake", action="store_true", help="Generate deterministic fixture content for tests.")
     parser.add_argument("--max-blocks", type=int, help="Only for --fake, or production --allow-partial staging.")
     parser.add_argument("--allow-partial", action="store_true", help="Allow partial staging output. Partial output cannot replace final reader.")

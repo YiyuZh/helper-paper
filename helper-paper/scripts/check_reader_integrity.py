@@ -6,11 +6,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
 import sys
 from pathlib import Path
 from typing import Any
+
+from helper_paper_config import secret_needles as configured_secret_needles
 
 
 DEFAULT_SECRET_ENVS = (
@@ -31,6 +32,8 @@ REQUIRED_NOTE_FIELDS = (
     "failures",
     "review_notes",
 )
+SUCCESS_STATUSES = {"success", "ok", "ready", "completed"}
+RELEASE_OUTPUT_STATUSES = {"validated_for_replacement", "final_replaced"}
 
 
 def read_utf8(path: Path) -> tuple[str | None, str | None]:
@@ -82,19 +85,6 @@ def extract_notes_json(text: str) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-def secret_needles(env_names: list[str]) -> list[str]:
-    needles: set[str] = set()
-    for name in env_names:
-        value = os.environ.get(name)
-        if not value or len(value) < 12:
-            continue
-        needles.add(value)
-        if len(value) >= 24:
-            needles.add(value[:12])
-            needles.add(value[-12:])
-    return sorted(needles, key=len, reverse=True)
-
-
 def scan_secret_leaks(paths: list[Path], needles: list[str]) -> list[str]:
     leaks: list[str] = []
     if not needles:
@@ -114,6 +104,34 @@ def scan_secret_leaks(paths: list[Path], needles: list[str]) -> list[str]:
 def collect_text_files(reader: Path) -> list[Path]:
     allowed = {".md", ".json", ".txt", ".log", ".ini"}
     return [path for path in reader.rglob("*") if path.is_file() and path.suffix.lower() in allowed]
+
+
+def check_release_tool_status(notes: dict[str, Any]) -> list[str]:
+    issues: list[str] = []
+    output_status = notes.get("output_status")
+    if output_status not in RELEASE_OUTPUT_STATUSES:
+        return issues
+    tool_status = notes.get("tool_status")
+    if not isinstance(tool_status, dict):
+        return ["translation_notes.md tool_status must be an object"]
+
+    required_tools = ("source_extraction", "gpt_academic", "chatpaper")
+    for tool in required_tools:
+        entry = tool_status.get(tool)
+        if not isinstance(entry, dict):
+            issues.append(f"translation_notes.md release tool missing object: {tool}")
+            continue
+        status = str(entry.get("status") or "").lower()
+        if status not in SUCCESS_STATUSES:
+            issues.append(f"translation_notes.md release tool not successful: {tool}")
+        command = entry.get("command")
+        if not isinstance(command, str) or not command.strip():
+            issues.append(f"translation_notes.md release tool missing command: {tool}")
+        if tool in {"gpt_academic", "chatpaper"}:
+            revision = entry.get("upstream_revision") or entry.get("revision")
+            if not isinstance(revision, str) or not revision.strip() or revision.strip().lower() == "unknown":
+                issues.append(f"translation_notes.md release tool missing upstream revision: {tool}")
+    return issues
 
 
 def main() -> int:
@@ -225,12 +243,13 @@ def main() -> int:
                     issues.append("translation_notes.md review_notes must be a list")
                 if notes.get("partial") is True and notes.get("output_status") not in {"partial_staging_generated", "partial"}:
                     issues.append("translation_notes.md partial output_status mismatch")
+                issues.extend(check_release_tool_status(notes))
 
     if assets_dir.exists() and not assets_dir.is_dir():
         issues.append("assets exists but is not a directory")
 
     env_names = list(DEFAULT_SECRET_ENVS) + args.secret_env
-    leaks = scan_secret_leaks(collect_text_files(reader), secret_needles(env_names))
+    leaks = scan_secret_leaks(collect_text_files(reader), configured_secret_needles(tuple(env_names)))
     issues.extend(f"secret_leak: {item}" for item in leaks)
 
     report = {

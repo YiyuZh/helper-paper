@@ -58,10 +58,10 @@ Then read only the files needed for the task. For a normal daily start, read the
 - Do not treat LLM scores as human scores or gold labels.
 - Do not repeat WARN items already archived in `paper_real_learn_for_warn.md`.
 - Do not create full-paper readers unless the user asks for full-text alignment or bilingual reading.
-- Do not replace an existing reader if `gpt-academic` or `chatpaper` fails, if no provider is `ready`, or if output cannot be traced to source blocks.
+- Do not replace an existing reader if `gpt-academic` or `chatpaper` fails, if no provider is `ready`, if output cannot be traced to source blocks, or if `run_translation_pipeline.py --replace` does not have a successful `--tool-manifest`.
 - Do not run whole-paper translation before the translation failure playbook has been applied: provider smoke test, GPT Academic smoke test, ChatPaper smoke test, UTF-8 setup, staging output, reader integrity check, and key leakage scan.
 - Do not write DeepSeek, Xiaomi, OpenAI, Anthropic, or other API keys into GitHub files, SKILL.md, README, Obsidian notes, vault memory, or translation outputs.
-- Do not present external-tool output as finished unless `translation_notes.md` records tool name, upstream revision, command, API status, output status, and any failure.
+- Do not present external-tool output as finished unless `translation_notes.md` records tool name, successful status, upstream revision, command, API status, output status, and any failure.
 - Do not create topic MOC files by default. The Obsidian graph should show paper-to-paper relationships from `paper/03_notes/` only unless the user explicitly asks for topic maps.
 - Do not treat an AI-generated guide note or bilingual full reader as user-completed reading.
 - Do not mark a paper as complete until the user has written understanding notes and Codex has checked/corrected them.

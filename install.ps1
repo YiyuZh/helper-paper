@@ -73,9 +73,10 @@ function Install-SkillDirectory {
         throw "Staged install missing SKILL.md for $Name"
     }
 
+    $targetExisted = Test-Path -LiteralPath $Target
     $madeBackup = $false
     try {
-        if (Test-Path -LiteralPath $Target) {
+        if ($targetExisted) {
             $targetResolved = (Resolve-Path -LiteralPath $Target).Path
             if (-not (Test-PathInside -Child $targetResolved -Parent $SkillsRoot)) {
                 throw "Refusing to replace a path outside the Codex skills directory: $targetResolved"
@@ -86,7 +87,7 @@ function Install-SkillDirectory {
         }
         Move-Item -LiteralPath $staging -Destination $Target
     } catch {
-        if (Test-Path -LiteralPath $Target) {
+        if (((-not $targetExisted) -or $madeBackup) -and (Test-Path -LiteralPath $Target)) {
             Remove-Item -LiteralPath $Target -Recurse -Force
         }
         if ($madeBackup -and (Test-Path -LiteralPath $backup)) {

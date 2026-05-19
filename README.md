@@ -294,6 +294,25 @@ DeepSeek Pro 默认需要设置：
 - `DEEPSEEK_API_BASE_URL`
 - `DEEPSEEK_MODEL`
 
+### 让 Codex 能读到 API key
+
+不要只在当前 PowerShell 窗口里设置 `$env:DEEPSEEK_API_KEY`。Codex 进程通常不会继承你后开 PowerShell 的临时环境变量。推荐写入 Windows 用户级环境变量，然后重启 Codex 或开启一个新 Codex 会话。
+
+```powershell
+[Environment]::SetEnvironmentVariable("DEEPSEEK_API_KEY", "你的 DeepSeek key", "User")
+[Environment]::SetEnvironmentVariable("DEEPSEEK_API_BASE_URL", "https://api.deepseek.com", "User")
+[Environment]::SetEnvironmentVariable("DEEPSEEK_MODEL", "deepseek-v4-pro", "User")
+
+# 让当前 PowerShell 也立即可用；新 Codex 会话会从用户级环境变量读取。
+$env:DEEPSEEK_API_KEY = [Environment]::GetEnvironmentVariable("DEEPSEEK_API_KEY", "User")
+$env:DEEPSEEK_API_BASE_URL = [Environment]::GetEnvironmentVariable("DEEPSEEK_API_BASE_URL", "User")
+$env:DEEPSEEK_MODEL = [Environment]::GetEnvironmentVariable("DEEPSEEK_MODEL", "User")
+
+python "$env:USERPROFILE\.codex\skills\helper-paper\scripts\check_translation_providers.py" --provider deepseek --require-ready
+```
+
+如果 `--require-ready` 在 PowerShell 通过，但 Codex 里 `$helper-paper` 仍提示未配置 provider，关闭当前 Codex 会话并重新打开，再运行同一条检查。不要把真实 key 写入 README、`SKILL.md`、Obsidian vault、`config.example.json` 或 GitHub issue。
+
 MiMo token-plan 备用路线需要设置：
 
 - `MIMO_API_KEY`
@@ -317,6 +336,54 @@ GPT Academic 走 MiMo token-plan 时还需要：
 3. 先确认 `000_开始这里.md`、`02_daily/carry_over_todo.md`、`05_reviewer_coach/` 已经可用。
 4. 再配置 DeepSeek Pro 和外部工具，尝试为一篇公开 PDF 生成 reader。
 5. 生成 reader 后，先写一段自己的理解，再让 Codex 检查。不要把 reader 生成当成已读完。
+
+## 第一个真实 reader 怎么生成
+
+v1 的稳定边界是“中间产物输入 -> source-grounded reader 输出”。你需要先通过 wrapper/agent 流程或外部工具得到三份中间文件：
+
+- `source.md`：从 PDF 抽取的英文原文块。每块建议用 `[anchor: page-1-block-1]` 这类前缀标出来源。
+- `translation.md`：与 `source.md` 块数一一对应的中文翻译。
+- `chatpaper.md`：ChatPaper 生成的摘要、贡献、方法、局限和阅读问答。
+
+正式替换 reader 前还需要一份 `tool_manifest.json`，证明上游工具成功运行。最小格式如下，`upstream_revision` 建议填对应 Git 仓库的 commit hash：
+
+```json
+{
+  "source_extraction": {
+    "status": "success",
+    "command": "pdf/nature-reader extracted source.md from paper.pdf"
+  },
+  "gpt_academic": {
+    "status": "success",
+    "command": "gpt_academic translated source.md to translation.md",
+    "upstream_revision": "commit-hash"
+  },
+  "chatpaper": {
+    "status": "success",
+    "command": "ChatPaper summarized paper.pdf to chatpaper.md",
+    "upstream_revision": "commit-hash"
+  },
+  "failures": []
+}
+```
+
+然后运行：
+
+```powershell
+python "$env:USERPROFILE\.codex\skills\helper-paper\scripts\run_translation_pipeline.py" `
+  --vault-root $PaperRoot `
+  --paper-id "<paper-id>" `
+  --provider deepseek `
+  --model deepseek-v4-pro `
+  --pdf ".\paper.pdf" `
+  --source-md ".\source.md" `
+  --translation-md ".\translation.md" `
+  --chatpaper-md ".\chatpaper.md" `
+  --tool-manifest ".\tool_manifest.json" `
+  --replace
+```
+
+如果没有 `--tool-manifest`，或 manifest 标记任一上游步骤失败，脚本只允许生成 staging，不会替换正式 reader。
 
 ## 外部工具会做什么
 
@@ -457,6 +524,18 @@ foreach ($skill in $skills) {
 ```
 
 部分 plugin skills 可能安装在 Codex 插件目录中，不一定出现在 `$env:USERPROFILE\.codex\skills`，此检查只作为本机可用性提示。
+
+### 配套 skills 缺失时会怎样
+
+缺失配套 skill 不代表安装失败。`helper-paper` 会报告缺失并使用可行降级流程，但对应能力会变弱：
+
+| 缺失 skill | 仍然可用 | 会降级的能力 | 什么时候建议安装 |
+| --- | --- | --- | --- |
+| `nature-reader` | 可以用 `run_translation_pipeline.py` 从中间文件组装 reader | 图表就近放置、复杂 PDF 块定位、source-grounded reader 结构需要更多人工检查 | 需要长期生成可追溯全文 reader 时 |
+| `pdf` | 可以手动提供 PDF、source blocks 和翻译块 | PDF 抽取、页面渲染、图表资产检查不完整 | PDF 质量不稳定或需要图表资产时 |
+| `cs-paper-checklist` | Reviewer Coach 会使用内置简短审稿清单 | 顶会/期刊审稿视角不够细 | 需要系统训练写作 WARN 时 |
+| `nature-academic-search` | 可以用 arXiv/ACL/DOI/Crossref 等公开页面手动核验 | venue/date/DOI 元数据核验会更慢，且会标记未完全自动核验 | 候选筛选、引用真实性很重要时 |
+| `citation-relevance-auditor` | 可以做保守的 claim-vs-source 人工检查 | 引用是否支撑论点的自动审计会变弱 | 写论文正文、审查引用链时 |
 
 如果你使用默认论文库路径，可以继续检查 vault：
 

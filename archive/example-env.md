@@ -5,7 +5,21 @@ Do not commit real API keys. Replace every placeholder before using a command.
 
 ## DeepSeek Pro
 
-PowerShell session-only example:
+Recommended Windows user-level setup for Codex:
+
+```powershell
+[Environment]::SetEnvironmentVariable("DEEPSEEK_API_KEY", "your DeepSeek key", "User")
+[Environment]::SetEnvironmentVariable("DEEPSEEK_API_BASE_URL", "https://api.deepseek.com", "User")
+[Environment]::SetEnvironmentVariable("DEEPSEEK_MODEL", "deepseek-v4-pro", "User")
+
+$env:DEEPSEEK_API_KEY = [Environment]::GetEnvironmentVariable("DEEPSEEK_API_KEY", "User")
+$env:DEEPSEEK_API_BASE_URL = [Environment]::GetEnvironmentVariable("DEEPSEEK_API_BASE_URL", "User")
+$env:DEEPSEEK_MODEL = [Environment]::GetEnvironmentVariable("DEEPSEEK_MODEL", "User")
+```
+
+Restart Codex or open a new Codex session after setting user-level variables.
+
+PowerShell session-only example for temporary testing:
 
 ```powershell
 $env:DEEPSEEK_API_KEY="your DeepSeek key"
@@ -19,7 +33,16 @@ more important than translation quality.
 
 ## Xiaomi MiMo Token-Plan
 
-PowerShell session-only example:
+Recommended Windows user-level setup for Codex:
+
+```powershell
+[Environment]::SetEnvironmentVariable("MIMO_API_KEY", "your Xiaomi MiMo key", "User")
+[Environment]::SetEnvironmentVariable("MIMO_API_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1", "User")
+[Environment]::SetEnvironmentVariable("MIMO_ANTHROPIC_BASE_URL", "https://token-plan-cn.xiaomimimo.com/anthropic", "User")
+[Environment]::SetEnvironmentVariable("MIMO_MODEL", "mimo-v2.5-pro", "User")
+```
+
+PowerShell session-only example for temporary testing:
 
 ```powershell
 $env:MIMO_API_KEY="your Xiaomi MiMo key"

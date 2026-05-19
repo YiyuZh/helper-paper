@@ -1,5 +1,5 @@
 {
-  "vault_root": "paper",
+  "vault_root": "%USERPROFILE%\\Documents\\helper-paper-vault\\paper",
   "external_tools_root": "%USERPROFILE%\\helper-paper-external-tools",
   "codex_skills_dir": "%USERPROFILE%\\.codex\\skills",
   "default_provider": "auto",

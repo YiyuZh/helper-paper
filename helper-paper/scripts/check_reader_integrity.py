@@ -38,7 +38,7 @@ RELEASE_OUTPUT_STATUSES = {"validated_for_replacement", "final_replaced"}
 
 def read_utf8(path: Path) -> tuple[str | None, str | None]:
     try:
-        return path.read_text(encoding="utf-8"), None
+        return path.read_text(encoding="utf-8-sig"), None
     except UnicodeDecodeError as exc:
         return None, f"not_utf8: {exc}"
     except OSError as exc:
@@ -83,6 +83,22 @@ def extract_notes_json(text: str) -> dict[str, Any] | None:
     except json.JSONDecodeError:
         return None
     return data if isinstance(data, dict) else None
+
+
+def normalize_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def paper_original_by_block_id(paper_text: str) -> dict[str, str]:
+    result: dict[str, str] = {}
+    pattern = re.compile(
+        r"## Block\s+\d+\s+`(?P<block_id>[^`]+)`.*?"
+        r"\*\*Original:\*\*\s*(?P<original>.*?)(?=\n\s*\*\*中文翻译:\*\*)",
+        flags=re.DOTALL,
+    )
+    for match in pattern.finditer(paper_text):
+        result[match.group("block_id")] = normalize_text(match.group("original"))
+    return result
 
 
 def scan_secret_leaks(paths: list[Path], needles: list[str]) -> list[str]:
@@ -217,9 +233,31 @@ def main() -> int:
         if missing_anchors:
             issues.append(f"source_blocks_missing_anchor_or_anchor_unavailable: {missing_anchors}")
         if paper_text:
+            originals_by_id = paper_original_by_block_id(paper_text)
             missing_in_paper = [value for value in ids if value and value not in paper_text]
             if missing_in_paper:
                 issues.append(f"source_block_ids_missing_from_paper_md: {len(missing_in_paper)}")
+            hash_mismatches = 0
+            missing_originals = 0
+            for block in blocks:
+                bid = block_id(block)
+                if not bid:
+                    continue
+                expected_hash = block.get("sha256_16") if isinstance(block, dict) else None
+                if not isinstance(expected_hash, str) or not expected_hash:
+                    issues.append(f"source_block_missing_sha256_16: {bid}")
+                    continue
+                original_text = originals_by_id.get(bid)
+                if original_text is None:
+                    missing_originals += 1
+                    continue
+                actual_hash = hashlib.sha256(original_text.encode("utf-8")).hexdigest()[:16]
+                if actual_hash != expected_hash:
+                    hash_mismatches += 1
+            if missing_originals:
+                issues.append(f"source_block_original_text_missing_from_paper_md: {missing_originals}")
+            if hash_mismatches:
+                issues.append(f"source_block_hash_mismatch: {hash_mismatches}")
 
     if translation_notes.is_file():
         notes_text, error = read_utf8(translation_notes)

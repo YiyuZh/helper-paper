@@ -44,6 +44,10 @@ def split_anchor(block: str) -> tuple[str | None, str]:
     return match.group(1).strip(), block[match.end() :].strip()
 
 
+def normalize_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
 def validate_paper_id(paper_id: str) -> str:
     if not SAFE_PAPER_ID.fullmatch(paper_id) or ".." in paper_id:
         raise SystemExit(
@@ -245,6 +249,7 @@ def build_staging(
             "block_id": block_id,
             "index": index,
             "sha256_16": digest,
+            "original_text": original,
         }
         if source_anchor:
             block_record["source_anchor"] = source_anchor
@@ -371,7 +376,8 @@ def main() -> int:
         provider_report = ensure_provider_ready(args.provider)
 
     block_count, partial = build_staging(args, staging, provider_report=provider_report)
-    validate_reader(staging, min_blocks=block_count)
+    min_blocks = 20 if args.replace else block_count
+    validate_reader(staging, min_blocks=min_blocks)
 
     report = {"ok": True, "staging": str(staging), "final": str(final), "replaced": False, "backup": None, "partial": partial}
     if args.replace:

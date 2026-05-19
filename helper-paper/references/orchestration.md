@@ -100,7 +100,7 @@ For each paper, guide the user in small blocks:
 
 The user's default prompt is:
 
-`导师带我读 P1，从摘要和引言开始。`
+`导师带我读 <paper-id>，从摘要和引言开始。`
 
 If the user reports a stopping point, record it in carry-over and resume there on the next daily start.
 

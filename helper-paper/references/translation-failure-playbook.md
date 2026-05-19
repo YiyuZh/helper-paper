@@ -2,7 +2,7 @@
 
 Use this reference before any helper-paper task that remakes a bilingual full-paper reader with GPT Academic, ChatPaper, MiMo, DeepSeek, OpenAI-compatible gateways, or temporary translation scripts.
 
-The goal is to prevent the exact failures observed while rebuilding the P1 reader. Treat these rules as guardrails, not optional notes.
+The goal is to prevent failures observed during prior bilingual-reader rebuilds. Treat these rules as guardrails, not optional notes.
 
 ## Mandatory Preflight
 

@@ -2,11 +2,25 @@
 
 Use this reference for "每日论文阅读", "start my day", "helper paper", bilingual reader generation, mentor-led reading, understanding checks, or any request to continue the daily paper-reading workflow.
 
+## Contents
+
+- Path resolution
+- Daily start
+- Carry-over updates
+- Required daily outputs
+- Reader generation
+- Reviewer Coach
+- Provider rules
+
+## Path Resolution
+
 Resolve paths from environment or config before assuming defaults:
 
 - `HELPER_PAPER_VAULT_ROOT` for the Obsidian paper vault.
 - `HELPER_PAPER_EXTERNAL_TOOLS_ROOT` for `gpt_academic` and `ChatPaper`.
 - `HELPER_PAPER_CODEX_SKILLS_DIR` for local Codex skills.
+
+If the user gives an explicit path in the current request, that path overrides env/config/example defaults.
 
 ## Daily Start
 
@@ -20,7 +34,7 @@ Resolve paths from environment or config before assuming defaults:
 8. Read `05_reviewer_coach/paper_real_learn_for_warn.md`.
 9. If carry-over has an unfinished paper, continue that paper before choosing a new one.
 10. Create or update `02_daily/YYYY-MM-DD_start-my-day.md`.
-11. Choose the paper for today. If the user does not specify one and no carry-over exists, prefer the next recommendation in the vault controller.
+11. Choose the paper for today. If the user does not specify one and no carry-over exists, first inspect `01_candidates/candidate_intake.md`. If there are no candidates, ask for a research topic, ask the user to add a PDF, or offer to search for candidates.
 12. Verify metadata before writing quality claims.
 13. If the selected paper PDF is missing, download it from the verified official/arXiv/ACL source into `00_inbox/pdfs/`.
 14. For English selected papers, create or open the bilingual reader under `04_full_readers/论文短名/` before asking the user to read. Default generation route: `gpt-academic` primary translation, `chatpaper` summary/review, and `nature-reader`-style final assembly with source anchors.

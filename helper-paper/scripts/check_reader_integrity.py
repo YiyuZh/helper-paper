@@ -20,6 +20,17 @@ DEFAULT_SECRET_ENVS = (
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
 )
+REQUIRED_NOTE_FIELDS = (
+    "paper_id",
+    "provider",
+    "model",
+    "command",
+    "api_status",
+    "tool_status",
+    "output_status",
+    "failures",
+    "review_notes",
+)
 
 
 def read_utf8(path: Path) -> tuple[str | None, str | None]:
@@ -50,6 +61,25 @@ def block_id(block: Any) -> str | None:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None
+
+
+def has_anchor(block: Any) -> bool:
+    return isinstance(block, dict) and (
+        bool(block.get("source_anchor"))
+        or bool(block.get("page"))
+        or bool(block.get("section"))
+        or block.get("anchor_unavailable") is True
+    )
+
+
+def extract_notes_json(text: str) -> dict[str, Any] | None:
+    match = re.search(r"```json\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
+    candidate = match.group(1) if match else text
+    try:
+        data = json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def secret_needles(env_names: list[str]) -> list[str]:
@@ -165,26 +195,36 @@ def main() -> int:
         duplicate_ids = len([value for value in ids if value]) - len(set(value for value in ids if value))
         if duplicate_ids:
             issues.append(f"duplicate_source_block_ids: {duplicate_ids}")
+        missing_anchors = sum(1 for block in blocks if not has_anchor(block))
+        if missing_anchors:
+            issues.append(f"source_blocks_missing_anchor_or_anchor_unavailable: {missing_anchors}")
+        if paper_text:
+            missing_in_paper = [value for value in ids if value and value not in paper_text]
+            if missing_in_paper:
+                issues.append(f"source_block_ids_missing_from_paper_md: {len(missing_in_paper)}")
 
     if translation_notes.is_file():
-        notes, error = read_utf8(translation_notes)
+        notes_text, error = read_utf8(translation_notes)
         if error:
             issues.append(f"translation_notes.md:{error}")
         else:
-            required_note_tokens = (
-                "provider",
-                "model",
-                "command",
-                "api_status",
-                "tool_status",
-                "failures",
-                "review_notes",
-            )
-            missing_note_tokens = [token for token in required_note_tokens if token not in notes]
-            if missing_note_tokens:
-                issues.append("translation_notes.md missing audit fields: " + ", ".join(missing_note_tokens))
-            if not any(token in notes for token in ("MiMo", "DeepSeek", "GPT Academic", "ChatPaper", "Translation", "deepseek", "mimo")):
-                warnings.append("translation_notes.md lacks provider/tool status markers")
+            notes = extract_notes_json(notes_text or "")
+            if notes is None:
+                issues.append("translation_notes.md missing parseable JSON audit block")
+            else:
+                missing = [field for field in REQUIRED_NOTE_FIELDS if field not in notes]
+                if missing:
+                    issues.append("translation_notes.md missing audit fields: " + ", ".join(missing))
+                if not isinstance(notes.get("api_status"), dict):
+                    issues.append("translation_notes.md api_status must be an object")
+                if not isinstance(notes.get("tool_status"), dict):
+                    issues.append("translation_notes.md tool_status must be an object")
+                if not isinstance(notes.get("failures"), list):
+                    issues.append("translation_notes.md failures must be a list")
+                if not isinstance(notes.get("review_notes"), list):
+                    issues.append("translation_notes.md review_notes must be a list")
+                if notes.get("partial") is True and notes.get("output_status") not in {"partial_staging_generated", "partial"}:
+                    issues.append("translation_notes.md partial output_status mismatch")
 
     if assets_dir.exists() and not assets_dir.is_dir():
         issues.append("assets exists but is not a directory")

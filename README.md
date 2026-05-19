@@ -48,10 +48,10 @@ README 里的命令使用两个变量，先按你的机器改好：
 
 ## 5 分钟快速开始
 
-把 `<repo-url>` 换成你的 GitHub 仓库地址，然后在 Windows PowerShell 中运行：
+在 Windows PowerShell 中运行：
 
 ```powershell
-git clone <repo-url> helper-paper-skill
+git clone https://github.com/YiyuZh/helper-paper.git helper-paper-skill
 cd helper-paper-skill
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Force
 ```
@@ -278,7 +278,7 @@ conda create -p (Join-Path $ChatPaper ".venv") python=3.10 -y
 & (Join-Path $ChatPaper ".venv\python.exe") -m pip install "setuptools<81"
 ```
 
-日常使用时，用户通常不需要手动打开这两个项目；`helper-paper` 会按 wrapper 规则检查这些工具和 provider。当前稳定的 `run_translation_pipeline.py` 负责把外部工具已经产出的 source blocks、translation blocks 和 ChatPaper summary 组装成 reader，并做 staging、完整性检查和安全替换。
+日常使用时，用户通常不需要手动打开这两个项目；`helper-paper` 会按 wrapper 规则检查这些工具和 provider。v1 稳定能力是：由 wrapper/agent 流程生成 source blocks、translation blocks 和 ChatPaper summary 后，`run_translation_pipeline.py` 负责组装 reader、写入 source map、生成 translation notes、做 staging、完整性检查和安全替换。本仓库不承诺一个脚本自动跑完整 GPT Academic + ChatPaper 全流程。
 
 外部工具只在生成或重做全文中英 reader 时需要。基础的每日启动、候选管理、个人理解检查和 Reviewer Coach 可以先跑通，再逐步配置全文翻译链路。
 
@@ -570,3 +570,29 @@ helper-paper/scripts/check_reader_integrity.py
 helper-paper/scripts/patch_chatpaper_mimo.py
 ```
 - `helper-paper` 负责辅助阅读和质量检查，不替代你对论文结论、引用适配和最终写作表述的人工判断。
+
+## 发布前检查与 GitHub 上传
+
+发布前在仓库根目录运行：
+
+```powershell
+python helper-paper\scripts\check_release_package.py --root .
+python helper-paper\scripts\check_release_package.py --root . --installed-skills-dir "$env:USERPROFILE\.codex\skills"
+git status --short
+```
+
+如果只是开发中预检查，可临时使用：
+
+```powershell
+python helper-paper\scripts\check_release_package.py --root . --allow-dirty
+```
+
+上传到 GitHub：
+
+```powershell
+git add .
+git commit -m "Harden helper-paper public release"
+git push
+```
+
+不要提交 API key、`.env`、`apikey.ini`、`config.local.json`、论文 PDF、Obsidian vault、reader 输出、translation cache、外部 `gpt_academic` / `ChatPaper` 源码目录。

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Build a Helper Paper reader through staging, validation, and safe replacement.
 
-Production mode assembles already-produced source, translation, and ChatPaper
-materials. It does not pretend to run GPT Academic or ChatPaper itself.
+This v1 pipeline assembles source-grounded intermediate files. It does not run
+GPT Academic or ChatPaper by itself; wrapper skills or a human operator must
+produce the source, translation, and ChatPaper markdown inputs first.
 """
 
 from __future__ import annotations
@@ -20,17 +21,25 @@ from typing import Any
 
 
 SAFE_PAPER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$")
+ANCHOR_RE = re.compile(r"^\s*\[(?:anchor|source_anchor):\s*([^\]]+)\]\s*", re.IGNORECASE)
 
 
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def blockify(text: str, *, limit: int = 20) -> list[str]:
+def blockify(text: str, *, limit: int | None = None) -> list[str]:
     chunks = [chunk.strip() for chunk in text.split("\n\n") if chunk.strip()]
     if not chunks:
         chunks = [line.strip() for line in text.splitlines() if line.strip()]
-    return chunks[:limit]
+    return chunks[:limit] if limit is not None else chunks
+
+
+def split_anchor(block: str) -> tuple[str | None, str]:
+    match = ANCHOR_RE.match(block)
+    if not match:
+        return None, block.strip()
+    return match.group(1).strip(), block[match.end() :].strip()
 
 
 def validate_paper_id(paper_id: str) -> str:
@@ -61,22 +70,22 @@ def ensure_provider_ready(provider: str) -> dict[str, Any]:
         return {"raw_output": proc.stdout, "status": "ready_unparsed"}
 
 
-def fake_inputs(max_blocks: int) -> tuple[list[str], list[str], str]:
+def fake_inputs(max_blocks: int | None) -> tuple[list[str], list[str], str, bool]:
     source = blockify(
-        "This is a fake source block for helper-paper pipeline testing.\n\n"
-        "The second fake block checks source map generation and integrity.",
-        limit=max_blocks,
+        "[anchor: fixture-page-1] This is a fake source block for helper-paper pipeline testing.\n\n"
+        "[anchor: fixture-page-2] The second fake block checks source map generation and integrity.",
+        limit=max_blocks or 20,
     )
     translation = blockify(
         "这是用于 helper-paper 管线测试的伪翻译。\n\n"
         "第二个伪块用于检查 source map。",
-        limit=max_blocks,
+        limit=max_blocks or 20,
     )
     chatpaper = "Fake ChatPaper summary: contribution, method, limitation, and Q&A are available."
-    return source, translation, chatpaper
+    return source, translation, chatpaper, False
 
 
-def production_inputs(args: argparse.Namespace) -> tuple[list[str], list[str], str]:
+def production_inputs(args: argparse.Namespace) -> tuple[list[str], list[str], str, bool]:
     missing = [
         name
         for name, value in {
@@ -95,17 +104,34 @@ def production_inputs(args: argparse.Namespace) -> tuple[list[str], list[str], s
             raise SystemExit(f"Required input not found: {path}")
     if args.pdf.stat().st_size == 0:
         raise SystemExit(f"PDF is empty: {args.pdf}")
+    if args.max_blocks is not None and not args.allow_partial:
+        raise SystemExit("--max-blocks is only allowed with --allow-partial in production mode.")
 
-    source_blocks = blockify(read_text(args.source_md), limit=args.max_blocks)
-    translation_blocks = blockify(read_text(args.translation_md), limit=args.max_blocks)
+    source_blocks = blockify(read_text(args.source_md))
+    translation_blocks = blockify(read_text(args.translation_md))
     if not source_blocks:
         raise SystemExit("--source-md did not contain any source blocks.")
+    if not translation_blocks:
+        raise SystemExit("--translation-md did not contain any translation blocks.")
+
+    partial = False
     if len(source_blocks) != len(translation_blocks):
-        raise SystemExit(
-            "Source and translation block counts must match. "
-            f"source={len(source_blocks)} translation={len(translation_blocks)}"
-        )
-    return source_blocks, translation_blocks, read_text(args.chatpaper_md)
+        if not args.allow_partial:
+            raise SystemExit(
+                "Source and translation block counts must match unless --allow-partial is set. "
+                f"source={len(source_blocks)} translation={len(translation_blocks)}"
+            )
+        partial = True
+
+    if args.allow_partial:
+        limit = min(len(source_blocks), len(translation_blocks))
+        if args.max_blocks is not None:
+            limit = min(limit, args.max_blocks)
+        source_blocks = source_blocks[:limit]
+        translation_blocks = translation_blocks[:limit]
+        partial = True
+
+    return source_blocks, translation_blocks, read_text(args.chatpaper_md), partial
 
 
 def build_staging(
@@ -113,19 +139,20 @@ def build_staging(
     staging: Path,
     *,
     provider_report: dict[str, Any] | None,
-) -> int:
+) -> tuple[int, bool]:
     staging.mkdir(parents=True, exist_ok=False)
     (staging / "assets").mkdir(exist_ok=True)
 
     if args.fake:
-        source_blocks, translation_blocks, chatpaper_text = fake_inputs(args.max_blocks)
+        source_blocks, translation_blocks, chatpaper_text, partial = fake_inputs(args.max_blocks)
     else:
-        source_blocks, translation_blocks, chatpaper_text = production_inputs(args)
+        source_blocks, translation_blocks, chatpaper_text, partial = production_inputs(args)
 
     source_map: dict[str, Any] = {
         "paper_id": args.paper_id,
         "source_file": str(args.source_md) if args.source_md else None,
         "pdf": str(args.pdf) if args.pdf else None,
+        "partial": partial,
         "blocks": [],
     }
     lines = [
@@ -136,19 +163,25 @@ def build_staging(
         "See `source_map.json` for source anchors.",
         "",
     ]
-    for index, original in enumerate(source_blocks, start=1):
+    for index, original_raw in enumerate(source_blocks, start=1):
+        source_anchor, original = split_anchor(original_raw)
         block_id = f"{args.paper_id}-B{index:04d}"
         digest = hashlib.sha256(original.encode("utf-8")).hexdigest()[:16]
-        source_map["blocks"].append(
-            {
-                "block_id": block_id,
-                "index": index,
-                "sha256_16": digest,
-            }
-        )
+        block_record: dict[str, Any] = {
+            "block_id": block_id,
+            "index": index,
+            "sha256_16": digest,
+        }
+        if source_anchor:
+            block_record["source_anchor"] = source_anchor
+        else:
+            block_record["anchor_unavailable"] = True
+        source_map["blocks"].append(block_record)
         lines.extend(
             [
-                f"## Block {index}",
+                f"## Block {index} `{block_id}`",
+                "",
+                f"**block_id:** `{block_id}`",
                 "",
                 f"**Original:** {original}",
                 "",
@@ -167,27 +200,39 @@ def build_staging(
         "provider": args.provider,
         "model": args.model or "from provider environment",
         "fake": args.fake,
+        "partial": partial,
         "command": " ".join(sys.argv),
         "api_status": provider_report or {"status": "skipped_for_fake_fixture"},
         "tool_status": {
+            "gpt_academic": {
+                "input": str(args.translation_md) if args.translation_md else None,
+                "status": "provided_intermediate" if args.translation_md else "fixture",
+                "upstream_revision": args.gpt_academic_revision or "unknown",
+            },
+            "chatpaper": {
+                "input": str(args.chatpaper_md) if args.chatpaper_md else None,
+                "status": "provided_intermediate" if args.chatpaper_md else "fixture",
+                "upstream_revision": args.chatpaper_revision or "unknown",
+            },
+            "source_extraction": {
+                "input": str(args.source_md) if args.source_md else None,
+                "status": "provided_intermediate" if args.source_md else "fixture",
+            },
             "pdf": str(args.pdf) if args.pdf else None,
-            "source_md": str(args.source_md) if args.source_md else None,
-            "translation_md": str(args.translation_md) if args.translation_md else None,
-            "chatpaper_md": str(args.chatpaper_md) if args.chatpaper_md else None,
         },
+        "output_status": "partial_staging_generated" if partial else "staging_generated",
         "failures": [],
         "review_notes": [
             "Reader assembled in staging before replacement.",
             "Original blocks come from --source-md, not from translation output.",
         ],
         "created_at": datetime.now().isoformat(timespec="seconds"),
-        "status": "staging_generated",
     }
     (staging / "translation_notes.md").write_text(
         "# translation notes\n\n```json\n" + json.dumps(notes, ensure_ascii=False, indent=2) + "\n```\n",
         encoding="utf-8",
     )
-    return len(source_blocks)
+    return len(source_blocks), partial
 
 
 def validate_reader(staging: Path, min_blocks: int) -> None:
@@ -231,8 +276,11 @@ def main() -> int:
     parser.add_argument("--source-md", type=Path, help="Source-grounded original text blocks extracted from the PDF.")
     parser.add_argument("--translation-md", type=Path, help="Chinese translation blocks aligned to --source-md.")
     parser.add_argument("--chatpaper-md", type=Path, help="ChatPaper summary/review output.")
+    parser.add_argument("--gpt-academic-revision", help="Upstream gpt_academic git revision used to produce --translation-md.")
+    parser.add_argument("--chatpaper-revision", help="Upstream ChatPaper git revision used to produce --chatpaper-md.")
     parser.add_argument("--fake", action="store_true", help="Generate deterministic fixture content for tests.")
-    parser.add_argument("--max-blocks", type=int, default=20)
+    parser.add_argument("--max-blocks", type=int, help="Only for --fake, or production --allow-partial staging.")
+    parser.add_argument("--allow-partial", action="store_true", help="Allow partial staging output. Partial output cannot replace final reader.")
     parser.add_argument("--replace", action="store_true", help="Replace the official reader after validation.")
     parser.add_argument("--skip-provider-check", action="store_true", help="Skip provider readiness check. Intended only for fake tests.")
     args = parser.parse_args()
@@ -240,8 +288,8 @@ def main() -> int:
     args.paper_id = validate_paper_id(args.paper_id)
     if args.skip_provider_check and not args.fake:
         raise SystemExit("--skip-provider-check is allowed only with --fake.")
-    if args.replace and (args.fake or args.skip_provider_check):
-        raise SystemExit("--replace is disabled for fake or provider-skipped runs.")
+    if args.replace and (args.fake or args.skip_provider_check or args.allow_partial):
+        raise SystemExit("--replace is disabled for fake, provider-skipped, or partial runs.")
 
     vault = Path(args.vault_root).resolve()
     reader_root = vault / "04_full_readers"
@@ -256,10 +304,10 @@ def main() -> int:
     if not args.fake and not args.skip_provider_check:
         provider_report = ensure_provider_ready(args.provider)
 
-    block_count = build_staging(args, staging, provider_report=provider_report)
+    block_count, partial = build_staging(args, staging, provider_report=provider_report)
     validate_reader(staging, min_blocks=block_count)
 
-    report = {"ok": True, "staging": str(staging), "final": str(final), "replaced": False, "backup": None}
+    report = {"ok": True, "staging": str(staging), "final": str(final), "replaced": False, "backup": None, "partial": partial}
     if args.replace:
         backup = replace_final(staging, final, backup_root)
         report["replaced"] = True

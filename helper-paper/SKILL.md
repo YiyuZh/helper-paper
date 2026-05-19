@@ -11,10 +11,10 @@ Operate the user's paper-reading vault as the source of truth.
 
 Resolve the vault root in this order:
 
-1. `HELPER_PAPER_VAULT_ROOT`
-2. `helper-paper/config.local.json` if the user created one
-3. `helper-paper/config.example.json`
-4. an explicitly provided `--root` or path in the user request
+1. An explicitly provided `--root` value or paper-vault path in the current user request
+2. `HELPER_PAPER_VAULT_ROOT`
+3. `helper-paper/config.local.json` if the user created one
+4. `helper-paper/config.example.json`
 
 At the start of every task, read the vault controller first when it exists:
 
@@ -39,12 +39,12 @@ Then read only the files needed for the task. For a normal daily start, read the
 
 ## Skill Routing
 
-- Use `cs-paper-checklist` for reviewer-style writing advice and submission-readiness teaching.
-- Use `nature-academic-search` when metadata, publication status, DOI, Crossref, arXiv, ACL, or reference authenticity matters.
-- Use `citation-relevance-auditor` when deciding whether a paper actually supports a claim.
+- Use `cs-paper-checklist` for reviewer-style writing advice and submission-readiness teaching when that companion skill is available; otherwise provide a concise built-in reviewer checklist and state that the companion skill is missing.
+- Use `nature-academic-search` when metadata, publication status, DOI, Crossref, arXiv, ACL, or reference authenticity matters and the skill is available; otherwise use primary web sources and clearly label any unverified metadata.
+- Use `citation-relevance-auditor` when deciding whether a paper actually supports a claim and the skill is available; otherwise do a conservative claim-vs-source check and mark uncertain claims.
 - Use `gpt-academic` as the primary external translation engine for English academic PDFs after provider preflight passes.
 - Use `chatpaper` after `gpt-academic` for summary, contribution/method/limitation extraction, and reading-question support.
-- Use `nature-reader` for source-grounded final reader structure, stable block IDs, figure/table placement, and fallback assembly when external tools are unavailable.
+- Use `nature-reader` for source-grounded final reader structure, stable block IDs, figure/table placement, and fallback assembly when the skill is available; otherwise use `scripts/run_translation_pipeline.py` with source-grounded intermediate files.
 - Provider strategy is `auto` by default: use DeepSeek Pro when `DEEPSEEK_API_KEY` passes smoke test; use Xiaomi MiMo token-plan only as fallback when DeepSeek is unavailable.
 - DeepSeek production model is `deepseek-v4-pro` for quality-first translation, review, and mentor-led reading. Use `deepseek-v4-flash` only when speed or cost matters more than quality. `deepseek-chat` and `deepseek-reasoner` are legacy fallbacks only and are scheduled to stop on 2026-07-24.
 - Xiaomi MiMo token-plan fallback base URL is `https://token-plan-cn.xiaomimimo.com/v1`; the Anthropic-compatible backup base is `https://token-plan-cn.xiaomimimo.com/anthropic`. Official console keys may need a different base, so set `MIMO_API_BASE_URL` explicitly when needed. Default fallback model is `mimo-v2.5-pro`.

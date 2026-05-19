@@ -24,9 +24,9 @@ SECRET_PATTERNS = [
     re.compile(r"(?i)(api[_-]?key|secret|token)\s*[:=]\s*[\"']?[A-Za-z0-9._-]{24,}"),
     re.compile(r"(?i)bearer\s+[A-Za-z0-9._-]{24,}"),
 ]
-PERSONAL_PATHS = [
-    r"C:\Users" + r"\lenovo",
-    r"E:\sci" + r"\commercial science\commercialscience\paper",
+PERSONAL_PATH_PATTERNS = [
+    re.compile(r"(?i)\b[A-Z]:\\Users\\[A-Za-z0-9._-]+\\"),
+    re.compile(r"(?i)\b[A-Z]:\\sci\\commercial science\\commercialscience\\paper\b"),
 ]
 
 
@@ -132,9 +132,9 @@ def text_checks(root: Path) -> list[str]:
             if pattern.search(text):
                 issues.append(f"secret-like value: {rel}")
                 break
-        for personal in PERSONAL_PATHS:
-            if personal in text:
-                issues.append(f"personal path: {rel}: {personal}")
+        for pattern in PERSONAL_PATH_PATTERNS:
+            if pattern.search(text):
+                issues.append(f"personal path pattern: {rel}: {pattern.pattern}")
     return issues
 
 
@@ -144,16 +144,28 @@ def required_file_list() -> list[str]:
         "install.ps1",
         ".gitignore",
         ".gitattributes",
+        "archive/example-env.md",
         "helper-paper/SKILL.md",
         "helper-paper/config.example.json",
+        "helper-paper/agents/openai.yaml",
         "helper-paper/scripts/check_paper_vault.py",
         "helper-paper/scripts/init_paper_vault.py",
         "helper-paper/scripts/check_translation_providers.py",
         "helper-paper/scripts/run_translation_pipeline.py",
         "helper-paper/scripts/check_reader_integrity.py",
         "helper-paper/scripts/check_release_package.py",
+        "helper-paper/scripts/helper_paper_config.py",
+        "helper-paper/scripts/patch_chatpaper_mimo.py",
+        "helper-paper/references/orchestration.md",
+        "helper-paper/references/quality-rules.md",
+        "helper-paper/references/reviewer-coach.md",
+        "helper-paper/references/translation-failure-playbook.md",
         "wrapper-skills/gpt-academic/SKILL.md",
+        "wrapper-skills/gpt-academic/agents/openai.yaml",
+        "wrapper-skills/gpt-academic/references/usage.md",
         "wrapper-skills/chatpaper/SKILL.md",
+        "wrapper-skills/chatpaper/agents/openai.yaml",
+        "wrapper-skills/chatpaper/references/usage.md",
     ]
 
 
@@ -162,10 +174,31 @@ def required_files(root: Path) -> list[str]:
     return [rel for rel in required if not (root / rel).is_file()]
 
 
+def installed_consistency_issues(root: Path, installed_skills_dir: str | None) -> list[str]:
+    if not installed_skills_dir:
+        return []
+    installed = Path(installed_skills_dir)
+    pairs = [
+        ("helper-paper/SKILL.md", installed / "helper-paper" / "SKILL.md"),
+        ("wrapper-skills/gpt-academic/SKILL.md", installed / "gpt-academic" / "SKILL.md"),
+        ("wrapper-skills/chatpaper/SKILL.md", installed / "chatpaper" / "SKILL.md"),
+    ]
+    issues: list[str] = []
+    for rel, installed_path in pairs:
+        repo_path = root / rel
+        if not installed_path.is_file():
+            issues.append(f"installed skill missing: {installed_path}")
+            continue
+        if repo_path.read_bytes() != installed_path.read_bytes():
+            issues.append(f"installed SKILL.md differs from repo: {installed_path}")
+    return issues
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check helper-paper release package.")
     parser.add_argument("--root", default=".", help="Repository root.")
     parser.add_argument("--allow-dirty", action="store_true", help="Skip clean working tree and tracked-file checks for local development.")
+    parser.add_argument("--installed-skills-dir", help="Optional Codex skills directory for installed SKILL.md consistency checks.")
     args = parser.parse_args()
     root = Path(args.root).resolve()
 
@@ -177,6 +210,7 @@ def main() -> int:
     issues.extend(git_status_issues(root, allow_dirty=args.allow_dirty))
     if not args.allow_dirty:
         issues.extend(tracked_file_issues(root, required_file_list()))
+    issues.extend(installed_consistency_issues(root, args.installed_skills_dir))
     issues.extend(text_checks(root))
 
     report = {"ok": not issues, "root": str(root), "issues": issues}

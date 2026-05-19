@@ -46,20 +46,9 @@ Teach from basic to advanced:
 2. Intermediate: make contributions verifiable, make related work serve baselines, define reproducible methods.
 3. Advanced: design experiments, ablations, failure analysis, reviewer objections, and venue fit.
 
-## Current Active WARN Items
+## Public Default State
 
-As of 2026-05-16:
-
-| WARN ID | Rule | Count | Status |
-|---|---|---:|---|
-| WARN-001 | 用户感知研究不能写成系统有效性证明 | 0/5 | active |
-| WARN-002 | 贡献必须具体、可验证，不能只写“提供启示” | 0/5 | active |
-| WARN-003 | 引用时必须限定场景，不能把技术面试论文泛化到所有招聘场景 | 0/5 | active |
-
-Next teaching pool:
-
-- WARN-004: 证据对齐指标必须先定义分母、判断单位和人工标注规则。
-- WARN-005: 不能把 LLM 评分当作金标准，必须保留人工评价或一致性检验。
+The public skill package does not ship active WARN items. Start with an empty `reviewer_learning_memory.md` and create WARN IDs from the user's current paper, topic, and writing needs. Author-demo WARN examples may be validated only through the explicit `author-demo` profile and must not become defaults for generic users.
 
 ## Prohibited Coach Behavior
 

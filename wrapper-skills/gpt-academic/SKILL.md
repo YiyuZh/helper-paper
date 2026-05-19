@@ -15,6 +15,8 @@ description: Wrapper for a local binary-husky/gpt_academic repository. Use when 
 
 This is a wrapper skill. Do not copy the upstream project into this skill folder.
 
+For detailed setup, provider notes, and failure handling, read `references/usage.md` when preparing or debugging an actual GPT Academic run.
+
 ## When To Use
 
 Use this skill when a task needs `gpt_academic` for:

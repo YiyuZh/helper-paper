@@ -1,20 +1,14 @@
 #!/usr/bin/env python3
-"""Validate or initialize a Helper Paper Obsidian paper vault.
-
-Default mode is generic and portable: it checks the directory structure and
-system files needed by helper-paper without requiring the author's P1/P4 data.
-Use ``--profile author-demo`` only for the original local demonstration vault.
-"""
+"""Validate or initialize a generic Helper Paper Obsidian paper vault."""
 
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
+from helper_paper_config import resolve_vault_root
 
-DEFAULT_ROOT = os.environ.get("HELPER_PAPER_VAULT_ROOT", "paper")
 
 REQUIRED_DIRS = [
     "00_inbox",
@@ -36,17 +30,19 @@ graph_exclude: true
 
 # 开始这里
 
-## 今天先看
+## 今天先做什么
 
-- 对 Codex 说：`$helper-paper start my day`
-- 如果有未完成事项，先继续未完成论文。
-- 如果没有未完成事项，从候选清单选择今日论文。
+1. 如果 `02_daily/carry_over_todo.md` 有未完成项，先继续那篇论文。
+2. 如果你已有 PDF，把它放进 `00_inbox/pdfs/`，然后对 Codex 说：`请把这个 PDF 加入候选并生成阅读任务。`
+3. 如果你还没有论文，对 Codex 说：`请围绕我的研究主题搜索 5 篇高质量候选论文。`
+4. 如果你只想启动每日流程，对 Codex 说：`$helper-paper start my day`。
 
-## 读完对 Codex 说什么
+## 我需要告诉 Codex 什么
 
-- `我写完这一段理解了，请检查我的理解。`
-- `今天没读完，请记录未完成，明天继续。`
-- `我已完成全文阅读和理解检查，请更新记忆并安排下一篇。`
+- 研究主题：例如 `我的研究主题是 <topic>，请生成候选论文池。`
+- 已有 PDF：例如 `我已放入一个 PDF，请检查并安排阅读。`
+- 没读完：例如 `<paper-id> 今天读到方法部分，请记录未完成，明天继续。`
+- 已完成：例如 `<paper-id> 我已完成全文阅读和理解检查，请更新记忆并安排下一篇。`
 """,
     "paper_daily_orchestration_memory.md": """---
 type: system
@@ -55,9 +51,30 @@ graph_exclude: true
 
 # paper daily orchestration memory
 
-- 默认流程：候选筛选 -> PDF/reader -> 精读笔记 -> 理解检查 -> Reviewer Coach -> WARN 记忆。
-- 完成阅读必须包含：用户理解笔记 + Codex 检查/斧正 + 用户明确完成确认。
-- 英文论文 reader 与个人理解笔记分开保存。
+- Generic public vault: no default paper, topic, or WARN state is assumed.
+- Daily flow: carry-over todo -> candidate intake -> PDF/reader -> deep note -> understanding check -> Reviewer Coach -> WARN memory.
+- Reading completion requires user notes plus Codex correction plus explicit user completion confirmation.
+- Bilingual reader source text and user understanding notes must remain separate.
+""",
+    "01_candidates/candidate_intake.md": """---
+type: paper-candidate-intake
+graph_exclude: true
+---
+
+# candidate intake
+
+## How to start
+
+- Add one or more PDFs to `00_inbox/pdfs/`, or
+- Write your research topic below, then ask Codex to search candidates.
+
+## Research topic
+
+未填写。
+
+## Candidate queue
+
+暂无候选论文。
 """,
     "02_daily/carry_over_todo.md": """---
 type: daily-paper-carry-over
@@ -68,10 +85,10 @@ graph_exclude: true
 
 当前未完成：暂无。
 """,
-    "98_system/README_paper_system.md": "# Paper System\n\n系统说明文件，不进入论文关系图谱。\n",
-    "98_system/README_inbox.md": "# Inbox\n\n`00_inbox/` 保存 PDF、链接和临时材料。\n",
-    "98_system/README_reviewer_coach.md": "# Reviewer Coach\n\n保存审稿人教练记忆和 WARN 归档。\n",
-    "99_templates/每日启动模板.md": "# 每日启动模板\n\n- 日期：\n- 今日论文：\n- 未完成事项：\n- 今日产物：\n",
+    "98_system/README_paper_system.md": "# Paper System\n\nSystem files are operational notes and should stay out of the main paper graph.\n",
+    "98_system/README_inbox.md": "# Inbox\n\n`00_inbox/` stores PDFs, links, and temporary paper materials.\n",
+    "98_system/README_reviewer_coach.md": "# Reviewer Coach\n\nStores reviewer-coach memory and WARN archive state.\n",
+    "99_templates/每日启动模板.md": "# 每日启动模板\n\n- 日期：\n- 今日论文：\n- 未完成事项：\n- 今日产物：\n- 今日未完成，明天继续：\n- 对 Codex 说什么：\n",
     "99_templates/精读一篇模板.md": """# 精读一篇模板
 
 ## 含金量卡
@@ -90,12 +107,13 @@ graph_exclude: true
 """,
     "05_reviewer_coach/reviewer_learning_memory.md": "# reviewer learning memory\n\n暂无 active WARN。\n",
     "05_reviewer_coach/paper_real_learn_for_warn.md": "# paper real learn for warn\n\n暂无已归档 WARN。\n",
-    "05_reviewer_coach/reviewer_coach_agent_prompt.md": "# reviewer coach agent prompt\n\n每天最多输出 1-3 条写作提醒。\n",
+    "05_reviewer_coach/reviewer_coach_agent_prompt.md": "# reviewer coach agent prompt\n\n每天最多输出 1-3 条写作提醒。只在用户明确确认 WARN ID 后计数。\n",
 }
 
 GENERIC_MARKERS = {
-    "000_开始这里.md": ["开始这里", "$helper-paper start my day", "未完成"],
-    "paper_daily_orchestration_memory.md": ["候选筛选", "理解检查", "WARN"],
+    "000_开始这里.md": ["已有 PDF", "研究主题", "$helper-paper start my day", "<paper-id>"],
+    "paper_daily_orchestration_memory.md": ["Generic public vault", "candidate intake", "WARN memory"],
+    "01_candidates/candidate_intake.md": ["Research topic", "Candidate queue"],
     "99_templates/精读一篇模板.md": ["含金量卡", "我的阅读理解与导师斧正", "审稿人教练", "相关论文"],
 }
 
@@ -138,10 +156,6 @@ def init_vault(root: Path, *, force: bool) -> list[str]:
     return created
 
 
-def read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
 def check_files(root: Path, *, profile: str) -> tuple[list[str], list[str], list[str], list[str], list[str]]:
     missing_dirs: list[str] = []
     missing_files: list[str] = []
@@ -180,7 +194,7 @@ def check_files(root: Path, *, profile: str) -> tuple[list[str], list[str], list
         if not target.is_file():
             continue
         try:
-            text = read_text(target)
+            text = target.read_text(encoding="utf-8")
         except UnicodeDecodeError as exc:
             unreadable.append(f"{rel}: not UTF-8: {exc}")
             continue
@@ -201,13 +215,13 @@ def print_list(title: str, items: list[str]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check or initialize a Helper Paper vault.")
-    parser.add_argument("--root", default=DEFAULT_ROOT, help="Paper vault root path. Defaults to HELPER_PAPER_VAULT_ROOT or ./paper.")
+    parser.add_argument("--root", help="Paper vault root. Explicit value overrides env/config defaults.")
     parser.add_argument("--profile", choices=("generic", "author-demo"), default="generic")
     parser.add_argument("--init", action="store_true", help="Create the generic vault structure and starter files.")
     parser.add_argument("--force", action="store_true", help="When used with --init, overwrite starter files.")
     args = parser.parse_args()
 
-    root = Path(args.root)
+    root = resolve_vault_root(args.root)
 
     if args.init:
         created = init_vault(root, force=args.force)

@@ -1,5 +1,5 @@
 param(
-    [string]$CodexSkillsDir = (Join-Path $env:USERPROFILE ".codex\skills"),
+    [string]$CodexSkillsDir = $(if ($env:HELPER_PAPER_CODEX_SKILLS_DIR) { $env:HELPER_PAPER_CODEX_SKILLS_DIR } else { Join-Path $env:USERPROFILE ".codex\skills" }),
     [switch]$SkipWrappers,
     [switch]$DryRun,
     [switch]$Force
@@ -21,37 +21,99 @@ function Test-PathInside {
     return $childFull.StartsWith($parentFull, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
-if (-not (Test-Path -LiteralPath $SourceSkill)) {
-    throw "Source skill not found: $SourceSkill"
+function Assert-SkillSource {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) {
+        throw "Source skill not found: $Path"
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $Path "SKILL.md"))) {
+        throw "Source SKILL.md not found: $Path"
+    }
 }
 
-if (-not (Test-Path -LiteralPath (Join-Path $SourceSkill "SKILL.md"))) {
-    throw "Source SKILL.md not found: $SourceSkill"
+function Install-SkillDirectory {
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Target,
+        [Parameter(Mandatory = $true)][string]$SkillsRoot,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    Assert-SkillSource -Path $Source
+    $targetParent = Split-Path -Parent $Target
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $backup = Join-Path $targetParent "$Name.backup-$stamp"
+    $staging = Join-Path $targetParent ".$Name.installing-$stamp"
+
+    if ($DryRun) {
+        Write-Host "[DryRun] Would install $Name"
+        Write-Host "  Source: $Source"
+        Write-Host "  Target: $Target"
+        if (Test-Path -LiteralPath $Target) {
+            Write-Host "  Would back up existing target to: $backup"
+        }
+        return $Target
+    }
+
+    if (-not (Test-Path -LiteralPath $targetParent)) {
+        New-Item -ItemType Directory -Path $targetParent | Out-Null
+    }
+
+    $resolvedParent = (Resolve-Path -LiteralPath $targetParent).Path
+    if (-not (Test-PathInside -Child $Target -Parent $SkillsRoot)) {
+        throw "Refusing to install outside the Codex skills directory: $Target"
+    }
+    if (Test-Path -LiteralPath $staging) {
+        Remove-Item -LiteralPath $staging -Recurse -Force
+    }
+
+    Copy-Item -LiteralPath $Source -Destination $staging -Recurse -Force:$Force
+    if (-not (Test-Path -LiteralPath (Join-Path $staging "SKILL.md"))) {
+        Remove-Item -LiteralPath $staging -Recurse -Force
+        throw "Staged install missing SKILL.md for $Name"
+    }
+
+    $madeBackup = $false
+    try {
+        if (Test-Path -LiteralPath $Target) {
+            $targetResolved = (Resolve-Path -LiteralPath $Target).Path
+            if (-not (Test-PathInside -Child $targetResolved -Parent $SkillsRoot)) {
+                throw "Refusing to replace a path outside the Codex skills directory: $targetResolved"
+            }
+            Move-Item -LiteralPath $Target -Destination $backup
+            $madeBackup = $true
+            Write-Host "Backed up existing $Name skill to: $backup"
+        }
+        Move-Item -LiteralPath $staging -Destination $Target
+    } catch {
+        if (Test-Path -LiteralPath $Target) {
+            Remove-Item -LiteralPath $Target -Recurse -Force
+        }
+        if ($madeBackup -and (Test-Path -LiteralPath $backup)) {
+            Move-Item -LiteralPath $backup -Destination $Target
+        }
+        if (Test-Path -LiteralPath $staging) {
+            Remove-Item -LiteralPath $staging -Recurse -Force
+        }
+        throw
+    }
+
+    return $Target
 }
 
-if (-not (Test-Path -LiteralPath $CodexSkillsDir)) {
+Assert-SkillSource -Path $SourceSkill
+
+if (-not $DryRun -and -not (Test-Path -LiteralPath $CodexSkillsDir)) {
     New-Item -ItemType Directory -Path $CodexSkillsDir | Out-Null
 }
 
-$SkillsRoot = (Resolve-Path -LiteralPath $CodexSkillsDir).Path
-
-if (Test-Path -LiteralPath $TargetSkill) {
-    $TargetResolved = (Resolve-Path -LiteralPath $TargetSkill).Path
-    if (-not (Test-PathInside -Child $TargetResolved -Parent $SkillsRoot)) {
-        throw "Refusing to replace a path outside the Codex skills directory: $TargetResolved"
-    }
-
-    $Stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $Backup = Join-Path $CodexSkillsDir "helper-paper.backup-$Stamp"
-    if (-not $DryRun) {
-        Move-Item -LiteralPath $TargetSkill -Destination $Backup
-    }
-    Write-Host "Backed up existing helper-paper skill to: $Backup"
+if ($DryRun) {
+    $SkillsRoot = [System.IO.Path]::GetFullPath($CodexSkillsDir)
+} else {
+    $SkillsRoot = (Resolve-Path -LiteralPath $CodexSkillsDir).Path
 }
 
-if (-not $DryRun) {
-    Copy-Item -LiteralPath $SourceSkill -Destination $TargetSkill -Recurse -Force:$Force
-}
+$InstalledSkill = Install-SkillDirectory -Source $SourceSkill -Target $TargetSkill -SkillsRoot $SkillsRoot -Name "helper-paper"
 
 $WrapperRoot = Join-Path $RepoRoot "wrapper-skills"
 $InstalledWrappers = @()
@@ -60,63 +122,53 @@ if (-not $SkipWrappers -and -not (Test-Path -LiteralPath $WrapperRoot)) {
 }
 if (-not $SkipWrappers -and (Test-Path -LiteralPath $WrapperRoot)) {
     Get-ChildItem -LiteralPath $WrapperRoot -Directory | ForEach-Object {
-        $WrapperSource = $_.FullName
-        $WrapperName = $_.Name
-        $WrapperTarget = Join-Path $CodexSkillsDir $WrapperName
-
-        if (-not (Test-Path -LiteralPath (Join-Path $WrapperSource "SKILL.md"))) {
-            throw "Wrapper SKILL.md not found: $WrapperSource"
-        }
-
-        if (Test-Path -LiteralPath $WrapperTarget) {
-            $WrapperResolved = (Resolve-Path -LiteralPath $WrapperTarget).Path
-            if (-not (Test-PathInside -Child $WrapperResolved -Parent $SkillsRoot)) {
-                throw "Refusing to replace a path outside the Codex skills directory: $WrapperResolved"
-            }
-
-            $Stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-            $WrapperBackup = Join-Path $CodexSkillsDir "$WrapperName.backup-$Stamp"
-            if (-not $DryRun) {
-                Move-Item -LiteralPath $WrapperTarget -Destination $WrapperBackup
-            }
-            Write-Host "Backed up existing $WrapperName skill to: $WrapperBackup"
-        }
-
-        if (-not $DryRun) {
-            Copy-Item -LiteralPath $WrapperSource -Destination $WrapperTarget -Recurse -Force:$Force
-        }
-        $InstalledWrappers += $WrapperTarget
+        $wrapperSource = $_.FullName
+        $wrapperName = $_.Name
+        $wrapperTarget = Join-Path $CodexSkillsDir $wrapperName
+        $InstalledWrappers += Install-SkillDirectory -Source $wrapperSource -Target $wrapperTarget -SkillsRoot $SkillsRoot -Name $wrapperName
     }
 }
 
 Write-Host ""
 if ($DryRun) {
-    Write-Host "Dry run completed. No files were copied or moved."
+    Write-Host "Dry run completed. No files or directories were created, copied, moved, or deleted."
     Write-Host ""
 }
-Write-Host "Installed helper-paper skill to:"
-Write-Host "  $TargetSkill"
+if ($DryRun) {
+    Write-Host "Would install helper-paper skill to:"
+} else {
+    Write-Host "Installed helper-paper skill to:"
+}
+Write-Host "  $InstalledSkill"
 if ($InstalledWrappers.Count -gt 0) {
     Write-Host ""
-    Write-Host "Installed wrapper skills:"
-    foreach ($Wrapper in $InstalledWrappers) {
-        Write-Host "  $Wrapper"
+    if ($DryRun) {
+        Write-Host "Would install wrapper skills:"
+    } else {
+        Write-Host "Installed wrapper skills:"
+    }
+    foreach ($wrapper in $InstalledWrappers) {
+        Write-Host "  $wrapper"
     }
 }
 Write-Host ""
-Write-Host "Recommended validation:"
-$SystemQuickValidate = Join-Path $env:USERPROFILE ".codex\skills\.system\skill-creator\scripts\quick_validate.py"
-Write-Host "  python `"$SystemQuickValidate`" `"$TargetSkill`""
-foreach ($Wrapper in $InstalledWrappers) {
-    Write-Host "  python `"$SystemQuickValidate`" `"$Wrapper`""
+if ($DryRun) {
+    Write-Host "Validation commands after a real install:"
+} else {
+    Write-Host "Recommended validation:"
 }
-Write-Host "  python `"$TargetSkill\scripts\check_translation_providers.py`" --provider auto --no-smoke"
-Write-Host "  python `"$TargetSkill\scripts\check_paper_vault.py`" --root `"<your-paper-vault>\paper`""
+$SystemQuickValidate = Join-Path $env:USERPROFILE ".codex\skills\.system\skill-creator\scripts\quick_validate.py"
+Write-Host "  python `"$SystemQuickValidate`" `"$InstalledSkill`""
+foreach ($wrapper in $InstalledWrappers) {
+    Write-Host "  python `"$SystemQuickValidate`" `"$wrapper`""
+}
+Write-Host "  python `"$InstalledSkill\scripts\check_translation_providers.py`" --provider auto --no-smoke"
+Write-Host "  python `"$InstalledSkill\scripts\check_paper_vault.py`" --root `"<your-paper-vault>\paper`""
 Write-Host "  # After ChatPaper is installed under HELPER_PAPER_EXTERNAL_TOOLS_ROOT:"
-Write-Host "  python `"$TargetSkill\scripts\patch_chatpaper_mimo.py`" --check"
+Write-Host "  python `"$InstalledSkill\scripts\patch_chatpaper_mimo.py`" --check"
 Write-Host ""
 Write-Host "Next steps:"
 Write-Host "  1. Configure provider environment variables. See archive/example-env.md."
 Write-Host "  2. Initialize a paper vault if needed:"
-Write-Host "     python `"$TargetSkill\scripts\init_paper_vault.py`" --root `"<your-paper-vault>\paper`""
+Write-Host "     python `"$InstalledSkill\scripts\init_paper_vault.py`" --root `"<your-paper-vault>\paper`""
 Write-Host "  3. In Codex chat, type: `$helper-paper start my day"

@@ -5,21 +5,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
+from helper_paper_config import resolve_chatpaper_root
 
 OLD = "response.response_ms / 1000.0"
 NEW = '(getattr(response, "response_ms", 0) or 0) / 1000.0'
 TARGET_FILES = ("chat_paper.py", "chat_translate.py")
-
-
-def default_chatpaper_root() -> str:
-    external_root = os.environ.get("HELPER_PAPER_EXTERNAL_TOOLS_ROOT")
-    if not external_root:
-        external_root = str(Path.home() / "helper-paper-external-tools")
-    return str(Path(external_root) / "ChatPaper")
 
 
 def patch_file(path: Path, *, apply: bool, backup: bool) -> dict[str, str | bool]:
@@ -41,13 +34,13 @@ def patch_file(path: Path, *, apply: bool, backup: bool) -> dict[str, str | bool
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Patch ChatPaper response_ms handling for MiMo gateways.")
-    parser.add_argument("--root", default=default_chatpaper_root(), help="Local ChatPaper repository path.")
+    parser.add_argument("--root", help="Local ChatPaper repository path. Explicit value overrides env/config defaults.")
     parser.add_argument("--check", action="store_true", help="Report whether patch is needed without writing. This is the default.")
     parser.add_argument("--apply", action="store_true", help="Actually patch the local ChatPaper checkout.")
     parser.add_argument("--no-backup", action="store_true", help="Do not create .helper-paper.bak files when applying.")
     args = parser.parse_args()
 
-    root = Path(args.root)
+    root = resolve_chatpaper_root(args.root)
     if args.check and args.apply:
         parser.error("Use either --check or --apply, not both.")
     apply_patch = bool(args.apply)

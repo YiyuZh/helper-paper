@@ -238,6 +238,7 @@ def main() -> int:
             if missing_in_paper:
                 issues.append(f"source_block_ids_missing_from_paper_md: {len(missing_in_paper)}")
             hash_mismatches = 0
+            source_map_text_hash_mismatches = 0
             missing_originals = 0
             for block in blocks:
                 bid = block_id(block)
@@ -254,10 +255,18 @@ def main() -> int:
                 actual_hash = hashlib.sha256(original_text.encode("utf-8")).hexdigest()[:16]
                 if actual_hash != expected_hash:
                     hash_mismatches += 1
+                if isinstance(block, dict):
+                    stored_original = block.get("original_text")
+                    if isinstance(stored_original, str) and stored_original.strip():
+                        stored_hash = hashlib.sha256(normalize_text(stored_original).encode("utf-8")).hexdigest()[:16]
+                        if stored_hash != expected_hash:
+                            source_map_text_hash_mismatches += 1
             if missing_originals:
                 issues.append(f"source_block_original_text_missing_from_paper_md: {missing_originals}")
             if hash_mismatches:
                 issues.append(f"source_block_hash_mismatch: {hash_mismatches}")
+            if source_map_text_hash_mismatches:
+                issues.append(f"source_map_original_text_hash_mismatch: {source_map_text_hash_mismatches}")
 
     if translation_notes.is_file():
         notes_text, error = read_utf8(translation_notes)

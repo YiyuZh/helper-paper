@@ -649,29 +649,3 @@ helper-paper/scripts/check_reader_integrity.py
 helper-paper/scripts/patch_chatpaper_mimo.py
 ```
 - `helper-paper` 负责辅助阅读和质量检查，不替代你对论文结论、引用适配和最终写作表述的人工判断。
-
-## 发布前检查与 GitHub 上传
-
-发布前在仓库根目录运行：
-
-```powershell
-python helper-paper\scripts\check_release_package.py --root .
-python helper-paper\scripts\check_release_package.py --root . --installed-skills-dir "$env:USERPROFILE\.codex\skills"
-git status --short
-```
-
-如果只是开发中预检查，可临时使用：
-
-```powershell
-python helper-paper\scripts\check_release_package.py --root . --allow-dirty
-```
-
-上传到 GitHub：
-
-```powershell
-git add .
-git commit -m "Harden helper-paper public release"
-git push
-```
-
-不要提交 API key、`.env`、`apikey.ini`、`config.local.json`、论文 PDF、Obsidian vault、reader 输出、translation cache、外部 `gpt_academic` / `ChatPaper` 源码目录。

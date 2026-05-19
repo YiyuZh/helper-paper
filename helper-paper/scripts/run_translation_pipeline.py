@@ -244,7 +244,7 @@ def build_staging(
     for index, original_raw in enumerate(source_blocks, start=1):
         source_anchor, original = split_anchor(original_raw)
         block_id = f"{args.paper_id}-B{index:04d}"
-        digest = hashlib.sha256(original.encode("utf-8")).hexdigest()[:16]
+        digest = hashlib.sha256(normalize_text(original).encode("utf-8")).hexdigest()[:16]
         block_record: dict[str, Any] = {
             "block_id": block_id,
             "index": index,
